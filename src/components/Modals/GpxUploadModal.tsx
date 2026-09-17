@@ -1,13 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Upload, 
   X, 
   FileText, 
   Check, 
-  AlertCircle
+  AlertCircle,
+  ArrowRight,
+  Trash2,
+  Plus,
+  ChevronRight,
+  ChevronLeft,
+  Search,
+  Minus,
+  Maximize2
 } from 'lucide-react';
 import { GpxParsedTrack, TrailNode, TrailSegment } from '../../types';
-import { parseGpx, findClosestNode } from '../../utils/geo';
+import { parseGpx, findNodesAlongTrack, getTrackSegmentSlice, getNodeDisplayName } from '../../utils/geo';
 
 interface GpxUploadModalProps {
   isOpen: boolean;
@@ -15,8 +23,29 @@ interface GpxUploadModalProps {
   nodes: TrailNode[];
   activeRegionId: string;
   onSaveSegment: (newSegment: Omit<TrailSegment, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onSaveMultipleSegments: (newSegments: Omit<TrailSegment, 'id' | 'createdAt' | 'updatedAt'>[]) => void;
   onSetPreviewTrack: (track: GpxParsedTrack | null) => void;
   onSaveNode?: (node: TrailNode) => void;
+}
+
+type ModalStep = 'UPLOAD' | 'MATCH_NODES' | 'REVIEW_SEGMENTS';
+
+interface MatchedNodeItem {
+  id: string; // for React keys
+  node: TrailNode;
+  index: number; // index in track points
+}
+
+interface ProposedSegment {
+  id: string;
+  name: string;
+  startNode: TrailNode;
+  endNode: TrailNode;
+  distanceKm: number;
+  elevationGainM: number;
+  elevationLossM: number;
+  coordinates: [number, number, number?][];
+  approved: boolean;
 }
 
 export const GpxUploadModal: React.FC<GpxUploadModalProps> = ({
@@ -25,6 +54,7 @@ export const GpxUploadModal: React.FC<GpxUploadModalProps> = ({
   nodes,
   activeRegionId,
   onSaveSegment,
+  onSaveMultipleSegments,
   onSetPreviewTrack,
   onSaveNode,
 }) => {
@@ -32,18 +62,30 @@ export const GpxUploadModal: React.FC<GpxUploadModalProps> = ({
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [track, setTrack] = useState<GpxParsedTrack | null>(null);
+  const [step, setStep] = useState<ModalStep>('UPLOAD');
+  const [isMinimized, setIsMinimized] = useState(false);
 
-  // Form states for saving as a segment
-  const [segmentName, setSegmentName] = useState('');
-  const [startNodeId, setStartNodeId] = useState('');
-  const [endNodeId, setEndNodeId] = useState('');
-  const [difficulty, setDifficulty] = useState<TrailSegment['difficulty']>('moderate');
-  const [surface, setSurface] = useState<TrailSegment['surface']>('track');
-  const [notes, setNotes] = useState('');
-  const [markCompleted, setMarkCompleted] = useState(true);
+  // Node matching states
+  const [matchedNodes, setMatchedNodes] = useState<MatchedNodeItem[]>([]);
+  const [nodeSearchQuery, setNodeSearchQuery] = useState('');
+  
+  // Segment states
+  const [proposedSegments, setProposedSegments] = useState<ProposedSegment[]>([]);
+  const [commonDifficulty, setCommonDifficulty] = useState<TrailSegment['difficulty']>('moderate');
+  const [commonSurface, setCommonSurface] = useState<TrailSegment['surface']>('track');
+  const [markCompleted, setMarkCompleted] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      // Reset state when modal closes
+      setStep('UPLOAD');
+      setTrack(null);
+      setMatchedNodes([]);
+      setProposedSegments([]);
+      setError(null);
+      setIsMinimized(false);
+      return;
+    }
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
@@ -53,7 +95,22 @@ export const GpxUploadModal: React.FC<GpxUploadModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  const filteredNodes = useMemo(() => {
+    if (!nodeSearchQuery.trim()) return [];
+    const query = nodeSearchQuery.toLowerCase();
+    return nodes.filter(n => 
+      !matchedNodes.some(m => m.node.id === n.id) && 
+      (n.name.toLowerCase().includes(query) || n.type.toLowerCase().includes(query))
+    ).slice(0, 5);
+  }, [nodes, nodeSearchQuery, matchedNodes]);
+
+  const elevationWarning = useMemo(() => {
+    if (!track) return null;
+    if (track.validElevationCount === 0) return 'No elevation data found in this GPX file.';
+    const ratio = track.validElevationCount / track.pointCount;
+    if (ratio < 0.5) return 'Insufficient elevation data detected. Totals may be unreliable.';
+    return null;
+  }, [track]);
 
   const handleFileProcess = (file: File) => {
     setError(null);
@@ -68,40 +125,52 @@ export const GpxUploadModal: React.FC<GpxUploadModalProps> = ({
         const content = e.target?.result as string;
         const parsed = parseGpx(content);
         setTrack(parsed);
-        setSegmentName(parsed.name);
         onSetPreviewTrack(parsed);
 
-        // Auto detect start & end nodes or set to auto-create
-        const startPoint = parsed.points[0];
-        const endPoint = parsed.points[parsed.points.length - 1];
+        // Auto detect nodes within 20m
+        const matches = findNodesAlongTrack(parsed.points, nodes, 20);
+        setMatchedNodes(matches.map(m => ({
+          id: `match-${Date.now()}-${Math.random()}`,
+          node: m.node,
+          index: m.index
+        })));
 
-        if (startPoint) {
-          const matchedStart = findClosestNode(startPoint.lat, startPoint.lng, nodes);
-          if (matchedStart) {
-            setStartNodeId(matchedStart.id);
-          } else {
-            setStartNodeId('__auto_start__');
-          }
-        } else {
-          setStartNodeId('__auto_start__');
-        }
-
-        if (endPoint) {
-          const matchedEnd = findClosestNode(endPoint.lat, endPoint.lng, nodes);
-          if (matchedEnd) {
-            setEndNodeId(matchedEnd.id);
-          } else {
-            setEndNodeId('__auto_end__');
-          }
-        } else {
-          setEndNodeId('__auto_end__');
-        }
+        setStep('MATCH_NODES');
       } catch (err: any) {
         setError(err.message || 'Failed to parse GPX file.');
       }
     };
     reader.readAsText(file);
   };
+
+  // Re-scan nodes if nodes list updates (e.g. user added them while minimized)
+  useEffect(() => {
+    if (step === 'MATCH_NODES' && track) {
+      // 1. Remove any nodes that have been deleted from the global nodes list (Fix Ghost Nodes)
+      setMatchedNodes(prev => {
+        const validNodeIds = new Set(nodes.map(n => n.id));
+        const filtered = prev.filter(m => validNodeIds.has(m.node.id));
+        
+        // 2. Scan for any new nodes that might match
+        if (!isMinimized) {
+          const matches = findNodesAlongTrack(track.points, nodes, 20);
+          const existingNodeIds = new Set(filtered.map(m => m.node.id));
+          const newMatches = matches
+            .filter(m => !existingNodeIds.has(m.node.id))
+            .map(m => ({
+              id: `match-auto-${Date.now()}-${Math.random()}`,
+              node: m.node,
+              index: m.index
+            }));
+          
+          if (newMatches.length === 0) return filtered;
+          return [...filtered, ...newMatches].sort((a, b) => a.index - b.index);
+        }
+        
+        return filtered;
+      });
+    }
+  }, [nodes, step, track, isMinimized]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -122,136 +191,386 @@ export const GpxUploadModal: React.FC<GpxUploadModalProps> = ({
     }
   };
 
-  const handleSaveAsSegment = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddManualNode = (node: TrailNode) => {
     if (!track) return;
+    
+    // Find closest point on track to this node
+    let minDistance = Infinity;
+    let closestIndex = -1;
 
-    let finalStartNodeId = startNodeId;
-    let finalEndNodeId = endNodeId;
-
-    if (finalStartNodeId === '__auto_start__' || !finalStartNodeId) {
-      const p = track.points[0];
-      const newId = `node-start-${Date.now()}`;
-      const newNode: TrailNode = {
-        id: newId,
-        name: `${segmentName || track.name} (Start)`,
-        type: 'carpark',
-        lat: p.lat,
-        lng: p.lng,
-        elevation: Math.round(p.ele ?? track.minElevationM ?? 0),
-        notes: `Origin waypoint created from GPX: ${segmentName || track.name}`,
-        visited: markCompleted,
-        visitedAt: markCompleted ? new Date().toISOString() : undefined,
-        regionId: activeRegionId,
-      };
-      if (onSaveNode) onSaveNode(newNode);
-      finalStartNodeId = newId;
+    for (let i = 0; i < track.points.length; i++) {
+      const p = track.points[i];
+      const dist = Math.sqrt(Math.pow(node.lat - p.lat, 2) + Math.pow(node.lng - p.lng, 2));
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestIndex = i;
+      }
     }
 
-    if (finalEndNodeId === '__auto_end__' || !finalEndNodeId) {
-      const p = track.points[track.points.length - 1];
-      const newId = `node-end-${Date.now() + 1}`;
-      const isPeak = p.ele && p.ele > 1800;
-      const newNode: TrailNode = {
-        id: newId,
-        name: `${segmentName || track.name} (End)`,
-        type: isPeak ? 'summit' : 'hut',
-        lat: p.lat,
-        lng: p.lng,
-        elevation: Math.round(p.ele ?? track.maxElevationM ?? 0),
-        notes: `Destination waypoint created from GPX: ${segmentName || track.name}`,
-        visited: markCompleted,
-        visitedAt: markCompleted ? new Date().toISOString() : undefined,
-        regionId: activeRegionId,
-      };
-      if (onSaveNode) onSaveNode(newNode);
-      finalEndNodeId = newId;
+    const newItem: MatchedNodeItem = {
+      id: `match-${Date.now()}-${Math.random()}`,
+      node,
+      index: closestIndex
+    };
+
+    const updated = [...matchedNodes, newItem].sort((a, b) => a.index - b.index);
+    setMatchedNodes(updated);
+    setNodeSearchQuery('');
+  };
+
+  const handleRemoveMatchedNode = (matchId: string) => {
+    setMatchedNodes(matchedNodes.filter(m => m.id !== matchId));
+  };
+
+  const generateSegments = () => {
+    if (!track || matchedNodes.length < 2) {
+      setError('At least two nodes are required to generate segments.');
+      return;
     }
 
-    const coordinates: [number, number, number?][] = track.points.map((p) => [
-      p.lng,
-      p.lat,
-      p.ele,
-    ]);
+    const segments: ProposedSegment[] = [];
+    for (let i = 0; i < matchedNodes.length - 1; i++) {
+      const start = matchedNodes[i];
+      const end = matchedNodes[i + 1];
+      
+      // Skip if nodes are at the same point (can happen with manual selection or very close nodes)
+      if (start.index === end.index) continue;
 
-    onSaveSegment({
-      name: segmentName || track.name,
-      startNodeId: finalStartNodeId,
-      endNodeId: finalEndNodeId,
-      distanceKm: track.distanceKm,
-      elevationGainM: track.elevationGainM,
-      elevationLossM: track.elevationLossM,
-      coordinates,
-      completed: markCompleted,
-      completedAt: markCompleted ? new Date().toISOString() : undefined,
-      completionCount: markCompleted ? 1 : 0,
-      completions: markCompleted
-        ? [
-            {
-              id: 'comp-' + Date.now(),
-              segmentId: '',
-              date: new Date().toISOString().split('T')[0],
-              notes: 'Imported from field GPX recording.',
-              rating: 5,
-            },
-          ]
-        : [],
-      difficulty,
-      surface,
-      notes,
-      regionId: activeRegionId,
-    });
+      const slice = getTrackSegmentSlice(track.points, start.index, end.index);
+      
+      segments.push({
+        id: `prop-seg-${i}`,
+        name: `${start.node.name} to ${end.node.name}`,
+        startNode: start.node,
+        endNode: end.node,
+        distanceKm: slice.distanceKm,
+        elevationGainM: slice.gainM,
+        elevationLossM: slice.lossM,
+        coordinates: slice.coordinates,
+        approved: true
+      });
+    }
 
+    if (segments.length === 0) {
+      setError('Could not generate any segments. Ensure nodes are at different positions along the track.');
+      return;
+    }
+
+    setProposedSegments(segments);
+    setStep('REVIEW_SEGMENTS');
+    setError(null);
+  };
+
+  const handleSaveApproved = () => {
+    const toSave = proposedSegments
+      .filter(s => s.approved)
+      .map(s => ({
+        name: '', // Segment names are now strictly Number to Number via display functions
+        startNodeId: s.startNode.id,
+        endNodeId: s.endNode.id,
+        distanceKm: s.distanceKm,
+        elevationGainM: s.elevationGainM,
+        elevationLossM: s.elevationLossM,
+        coordinates: s.coordinates,
+        regionId: activeRegionId
+      }));
+
+    onSaveMultipleSegments(toSave);
     onClose();
   };
 
-  // SVG path for technical elevation cross-section
-  const renderElevationProfile = () => {
-    if (!track || track.points.length < 2) return null;
-    const width = 460;
-    const height = 80;
-    const padding = 8;
+  if (!isOpen) return null;
 
-    const eleRange = Math.max(1, track.maxElevationM - track.minElevationM);
-    const stepX = (width - padding * 2) / (track.points.length - 1);
-
-    const points = track.points.map((p, i) => {
-      const x = padding + i * stepX;
-      const y =
-        height -
-        padding -
-        ((p.ele - track.minElevationM) / eleRange) * (height - padding * 2);
-      return `${x},${y}`;
-    });
-
-    const pathD = `M ${points[0]} L ${points.join(' L ')}`;
-    const areaD = `M ${padding},${height - padding} L ${points.join(' L ')} L ${
-      width - padding
-    },${height - padding} Z`;
-
+  if (isMinimized) {
     return (
-      <div className="bg-[#F5F3EE] border border-[#D5D0C6] rounded-[6px] p-2.5 font-mono">
-        <div className="flex items-center justify-between text-[10px] text-[#485057] mb-1 font-semibold">
-          <span>Topographic Cross-Section</span>
-          <span>
-            {track.minElevationM}m → {track.maxElevationM}m
-          </span>
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-sm">
+        <div className="bg-[#2D6A4F] border border-[#40916C] shadow-lg rounded-[6px] p-2 flex items-center justify-between text-white">
+          <div className="flex items-center gap-2.5 px-1">
+            <Upload className="w-3.5 h-3.5 text-[#E9C46A]" />
+            <div className="min-w-0">
+              <div className="text-[10px] font-mono uppercase tracking-wider opacity-80 leading-none mb-0.5">GPX Import Active</div>
+              <div className="text-xs font-bold truncate max-w-[180px]">
+                {step === 'MATCH_NODES' ? `Matching: ${matchedNodes.length} nodes` : `Reviewing segments`}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={() => setIsMinimized(false)}
+              className="p-1.5 hover:bg-white/10 rounded-[3px] transition-colors"
+              title="Maximize"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={onClose}
+              className="p-1.5 hover:bg-white/10 rounded-[3px] transition-colors"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-20 overflow-visible">
-          <line
-            x1={padding}
-            y1={height - padding}
-            x2={width - padding}
-            y2={height - padding}
-            stroke="#D5D0C6"
-            strokeWidth="1"
-          />
-          <path d={areaD} fill="#2D6A4F" fillOpacity="0.15" />
-          <path d={pathD} fill="none" stroke="#2D6A4F" strokeWidth="2" strokeLinecap="round" />
-        </svg>
+        <p className="text-[10px] text-center mt-2 text-[#555555] font-medium bg-[#FCFBF7]/80 backdrop-blur-sm px-2 py-0.5 rounded-full mx-auto w-fit">
+          Add missing waypoints on map using sidebar while minimized.
+        </p>
       </div>
     );
-  };
+  }
+
+  const renderUploadStep = () => (
+    <div
+      onDragEnter={handleDrag}
+      onDragLeave={handleDrag}
+      onDragOver={handleDrag}
+      onDrop={handleDrop}
+      onClick={() => fileInputRef.current?.click()}
+      className={`border border-dashed rounded-[6px] p-12 text-center cursor-pointer transition-colors ${
+        dragActive
+          ? 'border-[#2D6A4F] bg-[#F5F3EE]'
+          : 'border-[#D1CDBC] bg-[#FCFBF7] hover:border-[#40916C] hover:bg-[#F5F3EE]'
+      }`}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".gpx"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files[0]) {
+            handleFileProcess(e.target.files[0]);
+          }
+        }}
+      />
+      <div className="w-12 h-12 mx-auto rounded-[8px] bg-[#F5F3EE] border border-[#D1CDBC] flex items-center justify-center text-[#2D6A4F] mb-3">
+        <Upload className="w-6 h-6" />
+      </div>
+      <p className="text-sm font-bold text-[#1A1A1A] font-sans">
+        Drop GPX file here or click to browse
+      </p>
+      <p className="text-[11px] font-mono text-[#555555] mt-1.5">
+        Automatically matches track junctions and splits segments.
+      </p>
+    </div>
+  );
+
+  const renderMatchNodesStep = () => (
+    <div className="space-y-4">
+      {track && (
+        <div className="bg-[#FCFBF7] border border-[#D1CDBC] rounded-[6px] p-3">
+          <h3 className="text-xs font-bold text-[#1A1A1A] mb-2 flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5" />
+            Elevation Analysis
+          </h3>
+          
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3">
+            <div className="space-y-1">
+              <div className="flex justify-between text-[10px] font-mono text-[#555555]">
+                <span>Raw Gain:</span>
+                <span className="font-bold text-[#2B2B2B]">+{track.rawElevationGainM}m</span>
+              </div>
+              <div className="flex justify-between text-[10px] font-mono text-[#555555]">
+                <span>Smoothed Gain:</span>
+                <span className="font-bold text-[#2D6A4F]">+{track.smoothedElevationGainM}m</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between text-[10px] font-mono text-[#555555]">
+                <span>Min/Max:</span>
+                <span className="font-bold text-[#2B2B2B]">{track.minElevationM}m / {track.maxElevationM}m</span>
+              </div>
+              <div className="flex justify-between text-[10px] font-mono text-[#555555]">
+                <span>Elevation Data:</span>
+                <span className={`font-bold ${track.validElevationCount / track.pointCount < 0.5 ? 'text-[#A44A3F]' : 'text-[#2D6A4F]'}`}>
+                  {((track.validElevationCount / track.pointCount) * 100).toFixed(0)}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-[10px] font-mono text-[#555555] flex justify-between border-t border-[#F5F3EE] pt-2">
+            <span>Points: {track.pointCount}</span>
+            <span>Distance: {track.distanceKm} km</span>
+          </div>
+
+          {elevationWarning && (
+            <div className="mt-2 p-1.5 bg-[#FFFBEB] border border-[#FDE68A] rounded-[4px] text-[#92400E] text-[10px] font-mono flex items-center gap-1.5">
+              <AlertCircle className="w-3 h-3 shrink-0" />
+              {elevationWarning}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="bg-[#F5F3EE] border border-[#D1CDBC] rounded-[6px] p-3">
+        <h3 className="text-xs font-bold text-[#1A1A1A] mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Search className="w-3.5 h-3.5" />
+            Nodes Matched Along Track
+          </div>
+          <button 
+            onClick={() => {
+              const matches = findNodesAlongTrack(track!.points, nodes, 20);
+              setMatchedNodes(prev => {
+                const existingNodeIds = new Set(prev.map(m => m.node.id));
+                const newMatches = matches
+                  .filter(m => !existingNodeIds.has(m.node.id))
+                  .map(m => ({
+                    id: `match-refresh-${Date.now()}`,
+                    node: m.node,
+                    index: m.index
+                  }));
+                return [...prev, ...newMatches].sort((a, b) => a.index - b.index);
+              });
+            }}
+            className="text-[10px] text-[#2D6A4F] hover:underline font-mono"
+          >
+            Refresh Matches
+          </button>
+        </h3>
+        
+        {matchedNodes.length === 0 ? (
+          <div className="text-center py-4 text-[#555555] italic text-xs font-mono">
+            No existing nodes found within 20m of track.
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {matchedNodes.map((item, idx) => (
+              <div key={item.id} className="flex items-center gap-2 bg-[#FCFBF7] border border-[#D1CDBC] p-2 rounded-[4px]">
+                <div className="w-5 h-5 rounded-full bg-[#2D6A4F] text-white flex items-center justify-center text-[10px] font-bold">
+                  {idx + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-[#1A1A1A] truncate">{item.node.name}</div>
+                  <div className="text-[10px] font-mono text-[#555555]">Pos: {((item.index / (track?.points.length || 1)) * 100).toFixed(0)}%</div>
+                </div>
+                <button 
+                  onClick={() => handleRemoveMatchedNode(item.id)}
+                  className="p-1 text-[#A44A3F] hover:bg-[#FDF2F2] rounded"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="relative">
+        <label className="text-[11px] font-bold text-[#1A1A1A] mb-1 block">Add Missing Node Manually</label>
+        <div className="relative">
+          <input 
+            type="text"
+            placeholder="Search for junction, hut, or peak..."
+            value={nodeSearchQuery}
+            onChange={(e) => setNodeSearchQuery(e.target.value)}
+            className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-8 py-2 text-xs focus:outline-none focus:border-[#2D6A4F]"
+          />
+          <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-[#555555]" />
+        </div>
+        
+        {filteredNodes.length > 0 && (
+          <div className="absolute z-10 w-full mt-1 bg-white border border-[#D1CDBC] rounded-[4px] shadow-lg overflow-hidden">
+            {filteredNodes.map(n => (
+              <button
+                key={n.id}
+                onClick={() => handleAddManualNode(n)}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-[#F5F3EE] flex items-center justify-between"
+              >
+                <span>{n.name} <span className="text-[10px] text-[#555555]">({n.type})</span></span>
+                <Plus className="w-3 h-3 text-[#2D6A4F]" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between items-center pt-2">
+        <button
+          onClick={() => setStep('UPLOAD')}
+          className="flex items-center gap-1 text-xs font-semibold text-[#2B2B2B] hover:text-[#1A1A1A]"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Back
+        </button>
+        <button
+          disabled={matchedNodes.length < 2}
+          onClick={generateSegments}
+          className={`flex items-center gap-1 px-4 py-1.5 rounded-[4px] text-xs font-bold shadow-sm border transition-colors ${
+            matchedNodes.length < 2
+              ? 'bg-[#C5C1B1] text-[#555555] border-[#D1CDBC] cursor-not-allowed'
+              : 'bg-[#2D6A4F] text-white border-[#2D6A4F] hover:bg-[#23533E]'
+          }`}
+        >
+          Identify Segments
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderReviewSegmentsStep = () => (
+    <div className="space-y-4">
+      <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+        {proposedSegments.map((seg, idx) => (
+          <div key={seg.id} className={`border rounded-[6px] overflow-hidden ${seg.approved ? 'border-[#D1CDBC] bg-[#FCFBF7]' : 'border-[#C5C1B1] bg-gray-50 opacity-60'}`}>
+            <div className="flex items-center p-2 gap-2 border-b border-[#C5C1B1]">
+              <input 
+                type="checkbox"
+                checked={seg.approved}
+                onChange={() => {
+                  const updated = [...proposedSegments];
+                  updated[idx].approved = !updated[idx].approved;
+                  setProposedSegments(updated);
+                }}
+                className="w-3.5 h-3.5 text-[#2D6A4F] rounded focus:ring-0"
+              />
+              <div className="flex-1 bg-transparent text-xs font-bold p-0 text-[#1A1A1A]">
+                {getNodeDisplayName(seg.startNode)} to {getNodeDisplayName(seg.endNode)}
+              </div>
+              <span className="text-[10px] font-mono text-[#555555] whitespace-nowrap">{seg.distanceKm.toFixed(1)} km</span>
+            </div>
+            <div className="p-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] font-mono text-[#2B2B2B]">
+              <div className="flex justify-between border-b border-[#F5F3EE]">
+                <span>Start:</span>
+                <span className="font-semibold text-[#1A1A1A] truncate ml-1">{getNodeDisplayName(seg.startNode)}</span>
+              </div>
+              <div className="flex justify-between border-b border-[#F5F3EE]">
+                <span>End:</span>
+                <span className="font-semibold text-[#1A1A1A] truncate ml-1">{getNodeDisplayName(seg.endNode)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Ascent:</span>
+                <span className="text-[#2D6A4F]">+{seg.elevationGainM}m</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Descent:</span>
+                <span className="text-[#A44A3F]">-{seg.elevationLossM}m</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-end pt-2">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setStep('MATCH_NODES')}
+            className="px-3 py-1.5 text-xs font-semibold text-[#2B2B2B] hover:text-[#1A1A1A] border border-[#D1CDBC] rounded-[4px]"
+          >
+            Back
+          </button>
+          <button
+            onClick={handleSaveApproved}
+            className="flex items-center gap-1 px-4 py-1.5 bg-[#2D6A4F] text-white rounded-[4px] text-xs font-bold shadow-sm border border-[#2D6A4F] hover:bg-[#23533E] transition-colors"
+          >
+            <Check className="w-4 h-4" />
+            Save {proposedSegments.filter(s => s.approved).length} Segments
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -262,226 +581,53 @@ export const GpxUploadModal: React.FC<GpxUploadModalProps> = ({
       }}
       className="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/40"
     >
-      <div className="bg-[#FCFBF7] border border-[#D5D0C6] rounded-[6px] w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-[0_8px_24px_rgba(0,0,0,0.16)] p-5 relative text-[#485057] select-none">
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-3.5 right-3.5 text-[#7A7A7A] hover:text-[#213026] p-1 rounded-[4px] hover:bg-[#F5F3EE] transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
+      <div className="bg-[#FCFBF7] border border-[#D1CDBC] rounded-[6px] w-full max-w-xl max-h-[90vh] flex flex-col shadow-[0_8px_24px_rgba(0,0,0,0.16)] p-5 relative text-[#2B2B2B] select-none">
+        {/* Controls */}
+        <div className="absolute top-3.5 right-3.5 flex items-center gap-1">
+          {step !== 'UPLOAD' && (
+            <button
+              onClick={() => setIsMinimized(true)}
+              className="text-[#555555] hover:text-[#1A1A1A] p-1.5 rounded-[4px] hover:bg-[#F5F3EE] transition-colors"
+              title="Minimize to footer"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="text-[#555555] hover:text-[#1A1A1A] p-1.5 rounded-[4px] hover:bg-[#F5F3EE] transition-colors"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-        <div className="flex items-center gap-2.5 mb-4 border-b border-[#D5D0C6] pb-3">
+        <div className="flex items-center gap-2.5 mb-4 border-b border-[#D1CDBC] pb-3 shrink-0">
           <div className="w-7 h-7 rounded-[4px] bg-[#2D6A4F] text-white flex items-center justify-center shadow-xs">
             <Upload className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-sm font-bold font-sans text-[#213026]">Import GPX Track Log</h2>
-            <p className="text-[11px] font-mono text-[#485057]">
-              Load Garmin, Coros, or DOC GPX telemetry files to parse track geometry and statistics.
+            <h2 className="text-sm font-bold font-sans text-[#1A1A1A]">GPX Network Slicer</h2>
+            <p className="text-[11px] font-mono text-[#2B2B2B]">
+              {step === 'UPLOAD' && 'Load a GPX track to identify trail network segments.'}
+              {step === 'MATCH_NODES' && 'Review junction points found along the track.'}
+              {step === 'REVIEW_SEGMENTS' && 'Review and approve individual segments before saving.'}
             </p>
           </div>
         </div>
 
         {error && (
-          <div className="mb-3 p-2 bg-[#FDF2F2] border border-[#F87171] rounded-[4px] text-[#A44A3F] text-xs font-mono flex items-center gap-2">
+          <div className="mb-3 p-2 bg-[#FDF2F2] border border-[#F87171] rounded-[4px] text-[#A44A3F] text-xs font-mono flex items-center gap-2 shrink-0">
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        {!track ? (
-          /* Drag & Drop Zone */
-          <div
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border border-dashed rounded-[6px] p-8 text-center cursor-pointer transition-colors ${
-              dragActive
-                ? 'border-[#2D6A4F] bg-[#F5F3EE]'
-                : 'border-[#D5D0C6] bg-[#FCFBF7] hover:border-[#40916C] hover:bg-[#F5F3EE]'
-            }`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".gpx"
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  handleFileProcess(e.target.files[0]);
-                }
-              }}
-            />
-            <div className="w-10 h-10 mx-auto rounded-[6px] bg-[#F5F3EE] border border-[#D5D0C6] flex items-center justify-center text-[#2D6A4F] mb-2.5">
-              <FileText className="w-5 h-5" />
-            </div>
-            <p className="text-xs font-semibold text-[#213026] font-sans">
-              Drop GPX file here or click to browse
-            </p>
-            <p className="text-[10px] font-mono text-[#7A7A7A] mt-1">
-              Supports standard GPX 1.1 tracks with elevation (ele) and coordinates
-            </p>
-          </div>
-        ) : (
-          /* Parsed Track Review & Segment Converter */
-          <form onSubmit={handleSaveAsSegment} className="space-y-3 font-mono text-xs">
-            {/* Stats Overview */}
-            <div className="grid grid-cols-3 gap-1.5 text-center bg-[#F5F3EE] p-2 rounded-[6px] border border-[#D5D0C6]">
-              <div>
-                <span className="text-[10px] text-[#485057] block">Distance</span>
-                <span className="text-xs font-bold text-[#213026]">{track.distanceKm} km</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-[#485057] block">Ascent</span>
-                <span className="text-xs font-bold text-[#2D6A4F]">+{track.elevationGainM}m</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-[#485057] block">Descent</span>
-                <span className="text-xs font-bold text-[#A44A3F]">-{track.elevationLossM}m</span>
-              </div>
-            </div>
-
-            {/* Profile visualizer */}
-            {renderElevationProfile()}
-
-            {/* Segment Details Form */}
-            <div className="space-y-2.5 pt-1">
-              <div>
-                <label className="text-[11px] text-[#213026] block mb-1 font-sans font-semibold">
-                  Track Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={segmentName}
-                  onChange={(e) => setSegmentName(e.target.value)}
-                  className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2.5 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F] font-sans"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] text-[#213026] block mb-1 font-sans font-semibold">
-                    Origin Waypoint
-                  </label>
-                  <select
-                    value={startNodeId}
-                    onChange={(e) => setStartNodeId(e.target.value)}
-                    className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
-                  >
-                    <option value="__auto_start__">+ Auto-create waypoint at start</option>
-                    {nodes.map((n) => (
-                      <option key={n.id} value={n.id}>
-                        {n.name} ({n.type})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] text-[#213026] block mb-1 font-sans font-semibold">
-                    Destination Waypoint
-                  </label>
-                  <select
-                    value={endNodeId}
-                    onChange={(e) => setEndNodeId(e.target.value)}
-                    className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
-                  >
-                    <option value="__auto_end__">+ Auto-create waypoint at end</option>
-                    {nodes.map((n) => (
-                      <option key={n.id} value={n.id}>
-                        {n.name} ({n.type})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] text-[#213026] block mb-1 font-sans font-semibold">
-                    DOC Grade
-                  </label>
-                  <select
-                    value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value as any)}
-                    className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
-                  >
-                    <option value="easy">Easy (Well formed)</option>
-                    <option value="moderate">Moderate (Tramping track)</option>
-                    <option value="challenging">Challenging (Alpine)</option>
-                    <option value="expert">Expert (Scoria / Route)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] text-[#213026] block mb-1 font-sans font-semibold">
-                    Surface Type
-                  </label>
-                  <select
-                    value={surface}
-                    onChange={(e) => setSurface(e.target.value as any)}
-                    className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
-                  >
-                    <option value="track">Bush Track</option>
-                    <option value="boardwalk">Boardwalk / Steps</option>
-                    <option value="scree">Scree / Scoria</option>
-                    <option value="poled_route">Poled Route</option>
-                    <option value="road">Service Road</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] text-[#213026] block mb-1 font-sans font-semibold">
-                  Field Notes
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Surface conditions, water points, weather notes..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] p-2 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F] font-sans"
-                />
-              </div>
-
-              <label className="flex items-center gap-2 cursor-pointer text-xs text-[#485057]">
-                <input
-                  type="checkbox"
-                  checked={markCompleted}
-                  onChange={(e) => setMarkCompleted(e.target.checked)}
-                  className="rounded-[3px] bg-[#FCFBF7] border-[#D5D0C6] text-[#2D6A4F] focus:ring-0 w-3.5 h-3.5"
-                />
-                <span>Mark as surveyed / completed in personal log</span>
-              </label>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex items-center justify-between pt-2.5 border-t border-[#D5D0C6] gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setTrack(null);
-                  onSetPreviewTrack(null);
-                }}
-                className="px-2.5 py-1 bg-[#F5F3EE] hover:bg-[#E8E5DD] text-[#213026] border border-[#D5D0C6] rounded-[4px] text-xs font-medium"
-              >
-                Upload Different File
-              </button>
-
-              <button
-                type="submit"
-                className="px-3 py-1 bg-[#2D6A4F] hover:bg-[#23533E] text-white rounded-[4px] text-xs font-semibold border border-[#2D6A4F] flex items-center gap-1 shadow-xs"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>Save Segment to Network</span>
-              </button>
-            </div>
-          </form>
-        )}
+        <div className="overflow-y-auto flex-1">
+          {step === 'UPLOAD' && renderUploadStep()}
+          {step === 'MATCH_NODES' && renderMatchNodesStep()}
+          {step === 'REVIEW_SEGMENTS' && renderReviewSegmentsStep()}
+        </div>
       </div>
     </div>
   );

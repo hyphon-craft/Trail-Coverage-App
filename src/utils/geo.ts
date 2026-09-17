@@ -44,31 +44,112 @@ export function calculateCoordinatesDistanceKm(
 
 /**
  * Calculates elevation gain and loss from coordinate stream.
- * Smooths small noise (threshold of 2m) typical in GPS / barometric data.
+ * Uses a median filter and an accumulated threshold to filter noise.
  */
-export function calculateElevationStats(coords: [number, number, number?][]): {
+export function calculateElevationStats(segments: { ele: number }[][]): {
   gain: number;
   loss: number;
+  rawGain: number;
+  smoothedGain: number;
+  minEle: number;
+  maxEle: number;
+  validCount: number;
+  totalCount: number;
 } {
-  let gain = 0;
-  let loss = 0;
-  if (coords.length < 2) return { gain: 0, loss: 0 };
+  let totalGain = 0;
+  let totalLoss = 0;
+  let totalRawGain = 0;
+  let minEle = Infinity;
+  let maxEle = -Infinity;
+  let validCount = 0;
+  let totalCount = 0;
 
-  for (let i = 1; i < coords.length; i++) {
-    const prevEle = coords[i - 1][2] ?? 0;
-    const currEle = coords[i][2] ?? 0;
-    const diff = currEle - prevEle;
+  const threshold = 1; // 1m accumulated threshold (more sensitive to small gains)
 
-    if (Math.abs(diff) >= 2) {
-      if (diff > 0) gain += diff;
-      else loss += Math.abs(diff);
+  for (const segment of segments) {
+    if (segment.length === 0) continue;
+    
+    const elevations = segment.map(p => p.ele);
+    const smoothedElevations = medianFilter(elevations, 5);
+
+    // Raw Gain (on unfiltered data)
+    for (let i = 1; i < elevations.length; i++) {
+      totalCount++;
+      if (!isNaN(elevations[i])) {
+        validCount++;
+        if (elevations[i] < minEle) minEle = elevations[i];
+        if (elevations[i] > maxEle) maxEle = elevations[i];
+      }
+      
+      const diff = elevations[i] - elevations[i - 1];
+      if (diff > 0 && !isNaN(diff)) totalRawGain += diff;
+    }
+    
+    // Add the first point of segment to counts if not handled
+    if (elevations.length > 0) {
+      if (totalCount === 0 || elevations.length === segment.length) {
+         // This is a bit messy because of the loop above. 
+         // Let's refine.
+      }
+    }
+
+    // Accumulate stats properly
+    let anchorEle = smoothedElevations[0];
+    for (let i = 1; i < smoothedElevations.length; i++) {
+      const current = smoothedElevations[i];
+      const diff = current - anchorEle;
+
+      if (Math.abs(diff) >= threshold) {
+        if (diff > 0) totalGain += diff;
+        else totalLoss += Math.abs(diff);
+        anchorEle = current;
+      }
+    }
+  }
+
+  // Fix counts
+  validCount = 0;
+  totalCount = 0;
+  for (const seg of segments) {
+    for (const p of seg) {
+      totalCount++;
+      if (!isNaN(p.ele) && p.ele !== 0) { // Assuming 0 might be missing in some contexts, but GPX usually has it.
+        validCount++;
+        if (p.ele < minEle) minEle = p.ele;
+        if (p.ele > maxEle) maxEle = p.ele;
+      }
     }
   }
 
   return {
-    gain: Math.round(gain),
-    loss: Math.round(loss),
+    gain: Math.round(totalGain),
+    loss: Math.round(totalLoss),
+    rawGain: Math.round(totalRawGain),
+    smoothedGain: Math.round(totalGain),
+    minEle: minEle === Infinity ? 0 : Math.round(minEle),
+    maxEle: maxEle === -Infinity ? 0 : Math.round(maxEle),
+    validCount,
+    totalCount,
   };
+}
+
+function medianFilter(data: number[], windowSize: number = 5): number[] {
+  if (data.length === 0) return [];
+  const result = new Array(data.length);
+  const halfWindow = Math.floor(windowSize / 2);
+
+  for (let i = 0; i < data.length; i++) {
+    const start = Math.max(0, i - halfWindow);
+    const end = Math.min(data.length - 1, i + halfWindow);
+    const window = data.slice(start, end + 1).sort((a, b) => a - b);
+    const mid = Math.floor(window.length / 2);
+    if (window.length % 2 === 0) {
+      result[i] = (window[mid - 1] + window[mid]) / 2;
+    } else {
+      result[i] = window[mid];
+    }
+  }
+  return result;
 }
 
 /**
@@ -102,72 +183,82 @@ export function parseGpx(xmlString: string): GpxParsedTrack {
     throw new Error('Invalid GPX XML format.');
   }
 
-  // Extract track name
+  // Handle namespaces
+  const ns = 'http://www.topografix.com/GPX/1/1';
+  const getElements = (name: string, parent: Element | Document = xmlDoc) => {
+    let elms = Array.from(parent.getElementsByTagNameNS(ns, name));
+    if (elms.length === 0) {
+      elms = Array.from(parent.getElementsByTagName(name));
+    }
+    return elms;
+  };
+
+  const trks = getElements('trk');
   let name = 'Imported GPX Track';
-  const nameElement = xmlDoc.querySelector('trk > name') || xmlDoc.querySelector('gpx > metadata > name');
-  if (nameElement && nameElement.textContent) {
-    name = nameElement.textContent.trim();
+  if (trks.length > 0) {
+    const nameEl = getElements('name', trks[0])[0];
+    if (nameEl && nameEl.textContent) name = nameEl.textContent.trim();
   }
 
-  // Find all track points
-  const trkpts = Array.from(xmlDoc.getElementsByTagName('trkpt'));
-  if (trkpts.length === 0) {
-    // Check route points or waypoints as fallback
-    const rtepts = Array.from(xmlDoc.getElementsByTagName('rtept'));
-    if (rtepts.length > 0) {
-      trkpts.push(...rtepts);
-    }
-  }
+  const allPoints: { lat: number; lng: number; ele: number; time?: string }[] = [];
+  const segments: { lat: number; lng: number; ele: number; time?: string }[][] = [];
 
-  if (trkpts.length === 0) {
-    throw new Error('No track points (<trkpt>) found in GPX file.');
-  }
+  for (const trk of trks) {
+    const trksegs = getElements('trkseg', trk);
+    for (const trkseg of trksegs) {
+      const currentSegment: { lat: number; lng: number; ele: number; time?: string }[] = [];
+      const trkpts = getElements('trkpt', trkseg);
+      
+      for (const pt of trkpts) {
+        const lat = parseFloat(pt.getAttribute('lat') || '0');
+        const lng = parseFloat(pt.getAttribute('lon') || '0');
+        
+        let ele = NaN;
+        const eleNode = getElements('ele', pt)[0];
+        if (eleNode && eleNode.textContent) {
+          ele = parseFloat(eleNode.textContent);
+        }
 
-  const points: { lat: number; lng: number; ele: number; time?: string }[] = [];
-  let minElevation = Infinity;
-  let maxElevation = -Infinity;
-
-  for (const pt of trkpts) {
-    const lat = parseFloat(pt.getAttribute('lat') || '0');
-    const lng = parseFloat(pt.getAttribute('lon') || '0');
-    
-    let ele = 0;
-    const eleNode = pt.getElementsByTagName('ele')[0];
-    if (eleNode && eleNode.textContent) {
-      ele = parseFloat(eleNode.textContent);
-    }
-
-    let time: string | undefined;
-    const timeNode = pt.getElementsByTagName('time')[0];
-    if (timeNode && timeNode.textContent) {
-      time = timeNode.textContent;
-    }
-
-    if (!isNaN(lat) && !isNaN(lng)) {
-      points.push({ lat, lng, ele: isNaN(ele) ? 0 : ele, time });
-      if (!isNaN(ele)) {
-        if (ele < minElevation) minElevation = ele;
-        if (ele > maxElevation) maxElevation = ele;
+        const point = { 
+          lat, 
+          lng, 
+          ele: isNaN(ele) ? 0 : ele, 
+          time: getElements('time', pt)[0]?.textContent || undefined 
+        };
+        currentSegment.push(point);
+        allPoints.push(point);
+      }
+      if (currentSegment.length > 0) {
+        segments.push(currentSegment);
       }
     }
   }
 
-  if (minElevation === Infinity) minElevation = 0;
-  if (maxElevation === -Infinity) maxElevation = 0;
+  if (allPoints.length === 0) {
+    throw new Error('No track points (<trkpt>) found in GPX file.');
+  }
 
-  // Calculate stats
-  const coords: [number, number, number?][] = points.map(p => [p.lng, p.lat, p.ele]);
-  const distanceKm = calculateCoordinatesDistanceKm(coords);
-  const { gain, loss } = calculateElevationStats(coords);
+  // Elevation Stats
+  const stats = calculateElevationStats(segments);
+
+  const distanceKm = segments.reduce((total, seg) => {
+    const coords: [number, number, number?][] = seg.map(p => [p.lng, p.lat, p.ele]);
+    return total + calculateCoordinatesDistanceKm(coords);
+  }, 0);
 
   return {
     name,
-    points,
-    distanceKm,
-    elevationGainM: gain,
-    elevationLossM: loss,
-    minElevationM: Math.round(minElevation),
-    maxElevationM: Math.round(maxElevation),
+    points: allPoints,
+    segments,
+    distanceKm: Math.round(distanceKm * 100) / 100,
+    elevationGainM: stats.gain,
+    elevationLossM: stats.loss,
+    rawElevationGainM: stats.rawGain,
+    smoothedElevationGainM: stats.smoothedGain,
+    minElevationM: stats.minEle,
+    maxElevationM: stats.maxEle,
+    pointCount: stats.totalCount,
+    validElevationCount: stats.validCount,
   };
 }
 
@@ -192,6 +283,64 @@ export function findClosestNode(
   }
 
   return closest;
+}
+
+/**
+ * Finds nodes that are near the given track points and orders them by their position on the track.
+ */
+export function findNodesAlongTrack(
+  points: { lat: number; lng: number }[],
+  nodes: TrailNode[],
+  thresholdMeters = 20
+): { node: TrailNode; index: number; distanceM: number }[] {
+  const matched: { node: TrailNode; index: number; distanceM: number }[] = [];
+
+  for (const node of nodes) {
+    let minDistance = Infinity;
+    let closestIndex = -1;
+
+    for (let i = 0; i < points.length; i++) {
+      const dist = calculateDistanceKm(node.lat, node.lng, points[i].lat, points[i].lng) * 1000;
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestIndex = i;
+      }
+    }
+
+    if (minDistance <= thresholdMeters) {
+      matched.push({ node, index: closestIndex, distanceM: minDistance });
+    }
+  }
+
+  // Sort by index along the track
+  return matched.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Slices a track between two indices and calculates metrics.
+ */
+export function getTrackSegmentSlice(
+  points: { lat: number; lng: number; ele: number }[],
+  startIndex: number,
+  endIndex: number
+): {
+  coordinates: [number, number, number?][];
+  distanceKm: number;
+  gainM: number;
+  lossM: number;
+} {
+  const slice = points.slice(startIndex, endIndex + 1);
+  const coords: [number, number, number?][] = slice.map(p => [p.lng, p.lat, p.ele]);
+  
+  const distanceKm = calculateCoordinatesDistanceKm(coords);
+  const stats = calculateElevationStats([slice]);
+
+  return {
+    coordinates: coords,
+    distanceKm,
+    gainM: stats.gain,
+    lossM: stats.loss,
+  };
 }
 
 /**
@@ -292,15 +441,49 @@ export async function fetchElevation(lat: number, lng: number): Promise<number |
  * Returns a human-friendly display label for a node, handling unnamed junctions
  * and unnamed waypoints gracefully.
  */
-export function getNodeDisplayName(node?: { name?: string; type?: string; elevation?: number } | null): string {
+export function getNodeDisplayName(node?: { name?: string; type?: string; elevation?: number; nodeNumber?: number } | null): string {
   if (!node) return 'Waypoint';
+  
+  // 1. For non-junctions (landmarks), prioritize the actual name
+  if (node.type !== 'junction' && node.name && node.name.trim()) {
+    return node.name.trim();
+  }
+
+  // 2. Prioritize node number for junctions or if no name exists
+  if (node.nodeNumber) {
+    return node.nodeNumber.toString();
+  }
+
+  // 3. Fallback to name if it exists (for junctions with names)
   if (node.name && node.name.trim()) {
     return node.name.trim();
   }
-  if (node.type === 'junction') {
-    return 'Unnamed Junction';
+  
+  // 4. Other types get their type name
+  if (node.type) {
+    const typeLabel = node.type.replace(/_/g, ' ');
+    if ((typeLabel === 'summit' || typeLabel === 'lookout') && node.elevation) {
+      return `Spot Height ${node.elevation}m`;
+    }
+    return typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1);
   }
-  const typeLabel = node.type ? node.type.replace(/_/g, ' ') : 'waypoint';
-  const capitalized = typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1);
-  return `Unnamed ${capitalized}`;
+
+  return 'Waypoint';
+}
+
+/**
+ * Returns a human-friendly display label for a segment.
+ * Strictly "Number to Number" format based on node numbers.
+ */
+export function getSegmentDisplayName(
+  segment: TrailSegment,
+  nodes: TrailNode[]
+): string {
+  const startNode = nodes.find(n => n.id === segment.startNodeId);
+  const endNode = nodes.find(n => n.id === segment.endNodeId);
+
+  const startName = startNode?.nodeNumber ? startNode.nodeNumber.toString() : 'Start';
+  const endName = endNode?.nodeNumber ? endNode.nodeNumber.toString() : 'End';
+
+  return `${startName} to ${endName}`;
 }

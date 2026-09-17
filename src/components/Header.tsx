@@ -34,12 +34,12 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleSidebar,
 }) => {
   return (
-    <header className="h-11 bg-[#FCFBF7] border-b border-[#E8E5DD] px-3 flex items-center justify-between z-30 relative select-none">
+    <header className="h-11 bg-[#FCFBF7] border-b border-[#C5C1B1] px-3 flex items-center justify-between z-30 relative select-none">
       {/* Left: Sidebar Toggle + Region Title */}
       <div className="flex items-center gap-2">
         <button
           onClick={onToggleSidebar}
-          className="p-1 rounded-[4px] text-[#485057] hover:text-[#213026] hover:bg-[#F5F3EE] transition-colors"
+          className="p-1 rounded-[4px] text-[#2B2B2B] hover:text-[#1A1A1A] hover:bg-[#F5F3EE] transition-colors"
           title={isSidebarOpen ? 'Hide panel' : 'Show panel'}
         >
           {isSidebarOpen ? (
@@ -52,10 +52,10 @@ export const Header: React.FC<HeaderProps> = ({
         <select
           value={activeRegionId}
           onChange={(e) => onSelectRegion(e.target.value)}
-          className="text-xs font-semibold text-[#213026] bg-transparent hover:bg-[#F5F3EE] rounded-[4px] px-1.5 py-1 cursor-pointer focus:outline-none transition-colors"
+          className="text-xs font-semibold text-[#1A1A1A] bg-transparent hover:bg-[#F5F3EE] rounded-[4px] px-1.5 py-1 cursor-pointer focus:outline-none transition-colors"
         >
           {regions.map((reg) => (
-            <option key={reg.id} value={reg.id} className="bg-[#FCFBF7] text-[#213026]">
+            <option key={reg.id} value={reg.id} className="bg-[#FCFBF7] text-[#1A1A1A]">
               {reg.name}
             </option>
           ))}
@@ -65,12 +65,12 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Right: Minimal GIS Controls */}
       <div className="flex items-center gap-1 text-xs">
         {/* Layer Selector */}
-        <div className="flex items-center gap-1 text-[#485057] hover:text-[#213026] px-1.5 py-0.5 rounded-[4px] hover:bg-[#F5F3EE]">
-          <Layers className="w-3.5 h-3.5 text-[#7A7A7A]" />
+        <div className="flex items-center gap-1 text-[#2B2B2B] hover:text-[#1A1A1A] px-1.5 py-0.5 rounded-[4px] hover:bg-[#F5F3EE]">
+          <Layers className="w-3.5 h-3.5 text-[#555555]" />
           <select
             value={settings.mapStyle}
             onChange={(e) => onUpdateSettings({ mapStyle: e.target.value as any })}
-            className="text-xs font-mono text-[#485057] bg-transparent cursor-pointer focus:outline-none"
+            className="text-xs font-mono text-[#2B2B2B] bg-transparent cursor-pointer focus:outline-none"
           >
             <option value="topo">ESRI Topo</option>
             <option value="cyclosm">CyclOSM Topo</option>
@@ -85,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
           className={`p-1.5 rounded-[4px] transition-colors ${
             settings.fogOfWarEnabled
               ? 'text-[#2D6A4F] bg-[#E8F0EB]'
-              : 'text-[#7A7A7A] hover:text-[#213026] hover:bg-[#F5F3EE]'
+              : 'text-[#555555] hover:text-[#1A1A1A] hover:bg-[#F5F3EE]'
           }`}
           title={settings.fogOfWarEnabled ? 'Focus mode active (unexplored subdued)' : 'Focus mode off'}
         >
@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Settings / Supabase */}
         <button
           onClick={onOpenSupabase}
-          className="p-1.5 rounded-[4px] text-[#7A7A7A] hover:text-[#213026] hover:bg-[#F5F3EE] transition-colors"
+          className="p-1.5 rounded-[4px] text-[#555555] hover:text-[#1A1A1A] hover:bg-[#F5F3EE] transition-colors"
           title="GIS Database & Settings"
         >
           <Database className="w-3.5 h-3.5" />

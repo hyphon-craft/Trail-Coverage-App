@@ -5,29 +5,29 @@
     --color-primary-bush: #2D6A4F;
     --color-secondary-green: #40916C;
     --color-completed-green: #52B788;
-    --color-active-route-blue: #1971C2;
-    --color-water-blue: #4C7EA8;
-    --color-summit-red: #A44A3F;
-    --color-hut-brown: #8B6F47;
-    --color-warning-orange: #C77D00;
-    --color-unexplored-grey: #6C757D;
+    --color-active-route-blue: #0D47A1;
+    --color-water-blue: #2E5A88;
+    --color-summit-red: #7B241C;
+    --color-hut-brown: #5D4037;
+    --color-warning-orange: #936300;
+    --color-unexplored-grey: #1A1A1A;
     --color-bg-primary: #F5F3EE;
     --color-bg-panel: #FCFBF7;
-    --color-border: #D5D0C6;
-    --color-heading: #213026;
-    --color-body: #485057;
-    --color-disabled: #7A7A7A;
+    --color-border: #D1CDBC;
+    --color-heading: #1A1A1A;
+    --color-body: #2B2B2B;
+    --color-disabled: #555555;
   }
 
   body {
     font-family: 'IBM Plex Sans', Inter, 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif;
-    color: #485057;
+    color: #2B2B2B;
     background-color: #F5F3EE;
     -webkit-font-smoothing: antialiased;
   }
   h1, h2, h3, h4, .font-heading {
     font-family: 'IBM Plex Sans', Inter, 'Source Sans Pro', sans-serif;
-    color: #213026;
+    color: #1A1A1A;
     font-weight: 600;
     letter-spacing: -0.01em;
   }
@@ -69,12 +69,12 @@
 }
 
 .leaflet-popup-close-button {
-  color: #7A7A7A !important;
+  color: #555555 !important;
   font-size: 14px !important;
   padding: 4px 8px !important;
 }
 .leaflet-popup-close-button:hover {
-  color: #213026 !important;
+  color: #1A1A1A !important;
 }
 
 .leaflet-control-zoom {
@@ -109,11 +109,11 @@
 
 .leaflet-control-attribution {
   background: rgba(245, 243, 238, 0.85) !important;
-  color: #7A7A7A !important;
+  color: #555555 !important;
   font-size: 9px !important;
 }
 .leaflet-control-attribution a {
-  color: #485057 !important;
+  color: #2B2B2B !important;
   text-decoration: none !important;
 }
 .leaflet-control-attribution a:hover {

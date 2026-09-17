@@ -30,7 +30,6 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
   const [lng, setLng] = useState<number>(174.0640);
   const [elevation, setElevation] = useState<number>(1000);
   const [notes, setNotes] = useState('');
-  const [visited, setVisited] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isFetchingElevation, setIsFetchingElevation] = useState(false);
 
@@ -43,7 +42,6 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
       setLng(node.lng);
       setElevation(node.elevation);
       setNotes(node.notes || '');
-      setVisited(Boolean(node.visited));
       setIsFetchingElevation(false);
     } else {
       setName('');
@@ -53,7 +51,6 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
       setLat(initialLat);
       setLng(initialLng);
       setNotes('');
-      setVisited(false);
 
       if (defaultCoordinates) {
         setIsFetchingElevation(true);
@@ -101,11 +98,8 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
       lat: Number(lat),
       lng: Number(lng),
       elevation: Number(elevation),
+      nodeNumber: node?.nodeNumber,
       notes: notes.trim(),
-      visited,
-      visitedAt: visited
-        ? node?.visitedAt || new Date().toISOString()
-        : undefined,
       regionId: activeRegionId,
       updatedAt: new Date().toISOString(),
     };
@@ -123,57 +117,39 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
       }}
       className="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/40"
     >
-      <div className="bg-[#FCFBF7] border border-[#D5D0C6] rounded-[6px] w-full max-w-md p-5 shadow-[0_8px_24px_rgba(0,0,0,0.2)] relative text-[#485057] select-none">
+      <div className="bg-[#FCFBF7] border border-[#D1CDBC] rounded-[6px] w-full max-w-md p-5 shadow-[0_8px_24px_rgba(0,0,0,0.2)] relative text-[#2B2B2B] select-none">
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-3.5 right-3.5 text-[#7A7A7A] hover:text-[#213026] p-1 rounded-[4px] hover:bg-[#F5F3EE] transition-colors"
+          className="absolute top-3.5 right-3.5 text-[#555555] hover:text-[#1A1A1A] p-1 rounded-[4px] hover:bg-[#F5F3EE] transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-2.5 mb-4 border-b border-[#D5D0C6] pb-3">
+        <div className="flex items-center gap-2.5 mb-4 border-b border-[#D1CDBC] pb-3">
           <div className="w-7 h-7 rounded-[4px] bg-[#2D6A4F] text-white flex items-center justify-center shadow-xs">
             <MapPin className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-sm font-bold font-sans text-[#213026]">
+            <h2 className="text-sm font-bold font-sans text-[#1A1A1A]">
               {node ? 'Edit Field Waypoint' : 'Create Map Waypoint'}
             </h2>
-            <p className="text-[11px] font-mono text-[#485057]">
+            <p className="text-[11px] font-mono text-[#2B2B2B]">
               {node ? 'Update cartographic designation and coordinates.' : 'Register a new hut, trig station, or junction.'}
             </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[#213026] text-[11px] font-semibold font-sans">
-                Waypoint Name
-              </label>
-              <span className="text-[10px] font-mono text-[#7A7A7A]">
-                Optional (for junctions & unnamed points)
-              </span>
-            </div>
-            <input
-              type="text"
-              placeholder={type === 'junction' ? 'Optional (leave blank for unnamed junction)' : 'e.g. Pouakai Hut, North Egmont (optional)'}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2.5 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F] font-sans"
-            />
-          </div>
-
           <div className="grid grid-cols-2 gap-2 font-mono">
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-medium">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-semibold font-sans">
                 Classification
               </label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as NodeType)}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F] font-sans"
               >
                 <option value="junction">Track Junction (•)</option>
                 <option value="hut">Backcountry Hut (⌂)</option>
@@ -181,13 +157,13 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                 <option value="lookout">Vantage / Tarn (◉)</option>
                 <option value="carpark">Roadhead / Carpark (P)</option>
                 <option value="bridge">Bridge / River (≍)</option>
-                <option value="water_source">Water Source</option>
+                <option value="waterfall">Waterfall / Stream</option>
               </select>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[#213026] text-[11px] font-medium">
+                <label className="text-[#1A1A1A] text-[11px] font-medium">
                   Elevation (meters)
                 </label>
                 {isFetchingElevation ? (
@@ -207,7 +183,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                         setIsFetchingElevation(false);
                       }
                     }}
-                    className="text-[10px] font-mono text-[#7A7A7A] hover:text-[#2D6A4F] hover:underline"
+                    className="text-[10px] font-mono text-[#555555] hover:text-[#2D6A4F] hover:underline"
                     title="Retrieve elevation from Open-Meteo DEM API"
                   >
                     Auto-detect
@@ -219,14 +195,32 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                 required
                 value={elevation}
                 onChange={(e) => setElevation(Number(e.target.value))}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               />
             </div>
           </div>
 
+          {type !== 'junction' && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[#1A1A1A] text-[11px] font-semibold font-sans">
+                  Waypoint Name
+                </label>
+              </div>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Pouakai Hut, North Egmont"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2.5 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F] font-sans"
+              />
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2 font-mono">
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-medium">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-medium">
                 Latitude (WGS84)
               </label>
               <input
@@ -235,12 +229,12 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                 required
                 value={lat}
                 onChange={(e) => setLat(Number(e.target.value))}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               />
             </div>
 
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-medium">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-medium">
                 Longitude (WGS84)
               </label>
               <input
@@ -249,7 +243,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                 required
                 value={lng}
                 onChange={(e) => setLng(Number(e.target.value))}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               />
             </div>
           </div>
@@ -268,7 +262,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
           )}
 
           <div>
-            <label className="text-[#213026] block mb-1 text-[11px] font-semibold font-sans">
+            <label className="text-[#1A1A1A] block mb-1 text-[11px] font-semibold font-sans">
               Notes / Facility Details
             </label>
             <textarea
@@ -276,23 +270,11 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
               placeholder="Bunk capacity, heating, water supply, exposure warning..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] p-2 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F] font-sans"
+              className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] p-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F] font-sans"
             />
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer pt-1 font-sans text-xs text-[#485057]">
-            <input
-              type="checkbox"
-              checked={visited}
-              onChange={(e) => setVisited(e.target.checked)}
-              className="rounded-[3px] bg-[#FCFBF7] border-[#D5D0C6] text-[#2D6A4F] focus:ring-0 w-3.5 h-3.5"
-            />
-            <span>
-              Mark location as visited / bagged
-            </span>
-          </label>
-
-          <div className="flex items-center justify-between pt-3 border-t border-[#D5D0C6] font-mono">
+          <div className="flex items-center justify-between pt-3 border-t border-[#D1CDBC] font-mono">
             {node && onDeleteNode ? (
               confirmDelete ? (
                 <div className="flex items-center gap-2">
@@ -310,7 +292,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setConfirmDelete(false)}
-                    className="text-[#7A7A7A] hover:text-[#213026] text-xs underline font-sans"
+                    className="text-[#555555] hover:text-[#1A1A1A] text-xs underline font-sans"
                   >
                     No
                   </button>
@@ -333,7 +315,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-2.5 py-1 bg-[#F5F3EE] hover:bg-[#E8E5DD] text-[#213026] border border-[#D5D0C6] rounded-[4px] text-xs font-medium"
+                className="px-2.5 py-1 bg-[#F5F3EE] hover:bg-[#C5C1B1] text-[#1A1A1A] border border-[#D1CDBC] rounded-[4px] text-xs font-medium"
               >
                 Cancel
               </button>

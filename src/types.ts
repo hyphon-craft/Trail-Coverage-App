@@ -5,7 +5,7 @@ export type NodeType =
   | 'lookout'
   | 'carpark'
   | 'bridge'
-  | 'water_source';
+  | 'waterfall';
 
 export interface TrailNode {
   id: string;
@@ -14,22 +14,11 @@ export interface TrailNode {
   lat: number;
   lng: number;
   elevation: number; // in meters
+  nodeNumber?: number; // Unique number for all nodes
   notes?: string;
-  visited?: boolean;
-  visitedAt?: string;
   regionId: string;
   createdAt?: string;
   updatedAt?: string;
-}
-
-export interface CompletionRecord {
-  id: string;
-  segmentId: string;
-  date: string;
-  durationMinutes?: number;
-  notes?: string;
-  rating?: number; // 1-5
-  weather?: string;
 }
 
 export interface TrailSegment {
@@ -40,18 +29,22 @@ export interface TrailSegment {
   distanceKm: number;
   elevationGainM: number;
   elevationLossM: number;
+  difficulty?: 'easy' | 'moderate' | 'hard' | 'expert';
+  surface?: 'gravel' | 'dirt' | 'paved' | 'technical';
   // GeoJSON coordinate array: [lng, lat, elevation?]
   coordinates: [number, number, number?][];
-  completed: boolean;
-  completedAt?: string;
-  completionCount: number;
-  completions: CompletionRecord[];
   notes?: string;
-  difficulty?: 'easy' | 'moderate' | 'challenging' | 'expert';
-  surface?: 'track' | 'boardwalk' | 'scree' | 'poled_route' | 'road';
   regionId: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CompletionRecord {
+  id: string;
+  routeId?: string;
+  segmentIds: string[];
+  completedAt: string;
+  notes?: string;
 }
 
 export interface SavedRoute {
@@ -64,6 +57,8 @@ export interface SavedRoute {
   totalLossM: number;
   estimatedHours: number;
   notes?: string;
+  completed: boolean;
+  completedAt?: string;
   createdAt: string;
   regionId: string;
 }
@@ -85,11 +80,21 @@ export interface GpxParsedTrack {
     ele: number;
     time?: string;
   }[];
+  segments: {
+    lat: number;
+    lng: number;
+    ele: number;
+    time?: string;
+  }[][];
   distanceKm: number;
   elevationGainM: number;
   elevationLossM: number;
+  rawElevationGainM: number;
+  smoothedElevationGainM: number;
   minElevationM: number;
   maxElevationM: number;
+  pointCount: number;
+  validElevationCount: number;
 }
 
 export type MapLayerStyle = 'topo' | 'cyclosm' | 'osm' | 'satellite';

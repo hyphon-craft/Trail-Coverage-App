@@ -193,37 +193,37 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
       }}
       className="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/40"
     >
-      <div className="bg-[#FCFBF7] border border-[#D5D0C6] rounded-[6px] w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-[0_8px_24px_rgba(0,0,0,0.16)] p-5 relative text-[#485057] select-none font-sans">
+      <div className="bg-[#FCFBF7] border border-[#D1CDBC] rounded-[6px] w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-[0_8px_24px_rgba(0,0,0,0.16)] p-5 relative text-[#2B2B2B] select-none font-sans">
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-3.5 right-3.5 text-[#7A7A7A] hover:text-[#213026] p-1 rounded-[4px] hover:bg-[#F5F3EE] transition-colors"
+          className="absolute top-3.5 right-3.5 text-[#555555] hover:text-[#1A1A1A] p-1 rounded-[4px] hover:bg-[#F5F3EE] transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-2.5 mb-4 border-b border-[#D5D0C6] pb-3">
+        <div className="flex items-center gap-2.5 mb-4 border-b border-[#D1CDBC] pb-3">
           <div className="w-7 h-7 rounded-[4px] bg-[#2D6A4F] text-white flex items-center justify-center shadow-xs">
             <Database className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-[#213026]">
+            <h2 className="text-sm font-bold text-[#1A1A1A]">
               GIS Configuration & Database
             </h2>
-            <p className="text-[11px] font-mono text-[#7A7A7A]">
+            <p className="text-[11px] font-mono text-[#555555]">
               Open-source map layers, PostgreSQL schema, and local network backup.
             </p>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1 border-b border-[#D5D0C6] mb-3 text-xs font-mono">
+        <div className="flex items-center gap-1 border-b border-[#D1CDBC] mb-3 text-xs font-mono">
           <button
             onClick={() => setActiveTab('config')}
             className={`pb-1.5 px-2.5 border-b-2 transition-colors font-medium ${
               activeTab === 'config'
                 ? 'border-[#2D6A4F] text-[#2D6A4F] font-semibold'
-                : 'border-transparent text-[#7A7A7A] hover:text-[#213026]'
+                : 'border-transparent text-[#555555] hover:text-[#1A1A1A]'
             }`}
           >
             Maps & Cloud Sync
@@ -233,7 +233,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
             className={`pb-1.5 px-2.5 border-b-2 transition-colors font-medium ${
               activeTab === 'schema'
                 ? 'border-[#2D6A4F] text-[#2D6A4F] font-semibold'
-                : 'border-transparent text-[#7A7A7A] hover:text-[#213026]'
+                : 'border-transparent text-[#555555] hover:text-[#1A1A1A]'
             }`}
           >
             PostgreSQL Schema
@@ -243,7 +243,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
             className={`pb-1.5 px-2.5 border-b-2 transition-colors font-medium ${
               activeTab === 'backup'
                 ? 'border-[#2D6A4F] text-[#2D6A4F] font-semibold'
-                : 'border-transparent text-[#7A7A7A] hover:text-[#213026]'
+                : 'border-transparent text-[#555555] hover:text-[#1A1A1A]'
             }`}
           >
             Backup & Reset
@@ -253,44 +253,44 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
         {/* Tab 1: API Configuration */}
         {activeTab === 'config' && (
           <form onSubmit={handleSaveSettings} className="space-y-3 text-xs font-mono">
-            <div className="p-3 bg-[#F5F3EE] rounded-[6px] border border-[#D5D0C6] space-y-1">
+            <div className="p-3 bg-[#F5F3EE] rounded-[6px] border border-[#D1CDBC] space-y-1">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-[#213026] block font-sans">Free Open-Source Mapping</span>
+                <span className="font-semibold text-[#1A1A1A] block font-sans">Free Open-Source Mapping</span>
                 <span className="text-[10px] text-[#2D6A4F] font-mono font-semibold">Zero Keys Required ✓</span>
               </div>
-              <p className="text-[#485057] text-[11px] font-sans leading-relaxed">
+              <p className="text-[#2B2B2B] text-[11px] font-sans leading-relaxed">
                 Mt Taranaki Trail Registry runs entirely on free, open-source cartography (CyclOSM Topographic Hiking, Esri World Topo, High-Res Satellite Imagery, and OpenStreetMap). No Mapbox tokens, paid accounts, or API keys are required.
               </p>
             </div>
 
-            <div className="p-3 bg-[#F5F3EE] rounded-[6px] border border-[#D5D0C6] space-y-2">
+            <div className="p-3 bg-[#F5F3EE] rounded-[6px] border border-[#D1CDBC] space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-[#213026] font-sans">Supabase Cloud Sync</span>
+                <span className="font-semibold text-[#1A1A1A] font-sans">Supabase Cloud Sync</span>
                 <span className="text-[10px] text-[#2D6A4F] font-semibold font-mono">PostgreSQL + PostGIS</span>
               </div>
-              <p className="text-[#485057] text-[11px] font-sans">
+              <p className="text-[#2B2B2B] text-[11px] font-sans">
                 Connect external cloud storage to synchronize tracks across mobile devices and field stations.
               </p>
 
               <div>
-                <label className="text-[#213026] block mb-1 text-[10px] font-semibold">Project URL</label>
+                <label className="text-[#1A1A1A] block mb-1 text-[10px] font-semibold">Project URL</label>
                 <input
                   type="text"
                   placeholder="https://your-project.supabase.co"
                   value={supabaseUrl}
                   onChange={(e) => setSupabaseUrl(e.target.value)}
-                  className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] p-1.5 text-[#213026] text-[11px] focus:outline-none focus:border-[#2D6A4F]"
+                  className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] p-1.5 text-[#1A1A1A] text-[11px] focus:outline-none focus:border-[#2D6A4F]"
                 />
               </div>
 
               <div>
-                <label className="text-[#213026] block mb-1 text-[10px] font-semibold">Anon / Public API Key</label>
+                <label className="text-[#1A1A1A] block mb-1 text-[10px] font-semibold">Anon / Public API Key</label>
                 <input
                   type="password"
                   placeholder="eyJhbGciOi..."
                   value={supabaseKey}
                   onChange={(e) => setSupabaseKey(e.target.value)}
-                  className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] p-1.5 text-[#213026] text-[11px] focus:outline-none focus:border-[#2D6A4F]"
+                  className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] p-1.5 text-[#1A1A1A] text-[11px] focus:outline-none focus:border-[#2D6A4F]"
                 />
               </div>
             </div>
@@ -318,7 +318,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
         {activeTab === 'schema' && (
           <div className="space-y-2.5 text-xs font-mono">
             <div className="flex items-center justify-between">
-              <p className="text-[#485057] font-sans text-[11px]">
+              <p className="text-[#2B2B2B] font-sans text-[11px]">
                 PostGIS topological schema for nodes, segments, completions, and expeditions:
               </p>
               <button
@@ -331,7 +331,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
             </div>
 
             <div className="relative">
-              <pre className="p-2.5 bg-[#F5F3EE] border border-[#D5D0C6] rounded-[4px] font-mono text-[10px] text-[#213026] max-h-72 overflow-y-auto leading-relaxed select-all">
+              <pre className="p-2.5 bg-[#F5F3EE] border border-[#D1CDBC] rounded-[4px] font-mono text-[10px] text-[#1A1A1A] max-h-72 overflow-y-auto leading-relaxed select-all">
                 {SUPABASE_SCHEMA_SQL}
               </pre>
             </div>
@@ -341,26 +341,26 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
         {/* Tab 3: Backup & Restore */}
         {activeTab === 'backup' && (
           <div className="space-y-3 text-xs font-mono">
-            <div className="p-3 bg-[#F5F3EE] rounded-[6px] border border-[#D5D0C6] space-y-2">
-              <span className="font-semibold text-[#213026] block font-sans">Export Trail Network JSON</span>
-              <p className="text-[#485057] font-sans text-[11px]">
+            <div className="p-3 bg-[#F5F3EE] rounded-[6px] border border-[#D1CDBC] space-y-2">
+              <span className="font-semibold text-[#1A1A1A] block font-sans">Export Trail Network JSON</span>
+              <p className="text-[#2B2B2B] font-sans text-[11px]">
                 Download a complete offline snapshot containing all surveyed track segments, waypoints, completions, and routes.
               </p>
               <button
                 onClick={handleExportBackup}
-                className="px-3 py-1 bg-[#FCFBF7] hover:bg-[#E8E5DD] text-[#213026] border border-[#D5D0C6] rounded-[4px] text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                className="px-3 py-1 bg-[#FCFBF7] hover:bg-[#C5C1B1] text-[#1A1A1A] border border-[#D1CDBC] rounded-[4px] text-xs font-semibold flex items-center gap-1.5 transition-colors"
               >
                 <Download className="w-3.5 h-3.5 text-[#2D6A4F]" />
                 <span>Export JSON Snapshot</span>
               </button>
             </div>
 
-            <div className="p-3 bg-[#F5F3EE] rounded-[6px] border border-[#D5D0C6] space-y-2">
-              <span className="font-semibold text-[#213026] block font-sans">Restore Network JSON</span>
-              <p className="text-[#485057] font-sans text-[11px]">
+            <div className="p-3 bg-[#F5F3EE] rounded-[6px] border border-[#D1CDBC] space-y-2">
+              <span className="font-semibold text-[#1A1A1A] block font-sans">Restore Network JSON</span>
+              <p className="text-[#2B2B2B] font-sans text-[11px]">
                 Restore your personal survey logs and waypoints from an exported JSON file.
               </p>
-              <label className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#FCFBF7] hover:bg-[#E8E5DD] text-[#213026] border border-[#D5D0C6] rounded-[4px] text-xs font-semibold cursor-pointer transition-colors">
+              <label className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#FCFBF7] hover:bg-[#C5C1B1] text-[#1A1A1A] border border-[#D1CDBC] rounded-[4px] text-xs font-semibold cursor-pointer transition-colors">
                 <Upload className="w-3.5 h-3.5 text-[#2D6A4F]" />
                 <span>Select JSON File</span>
                 <input
@@ -374,7 +374,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
 
             <div className="p-3 bg-[#FDF2F2] border border-[#F87171] rounded-[6px] space-y-2">
               <span className="font-semibold text-[#A44A3F] block font-sans">Reset to Factory DOC Mt Taranaki Registry</span>
-              <p className="text-[#485057] font-sans text-[11px]">
+              <p className="text-[#2B2B2B] font-sans text-[11px]">
                 Reset nodes and segments to the original Egmont National Park baseline (North Egmont, Pouakai Tarns, Tahurangi, Bells Falls, etc.).
               </p>
               <button

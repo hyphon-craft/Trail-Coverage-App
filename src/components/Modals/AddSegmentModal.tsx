@@ -56,12 +56,9 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
     const sNode = nodes.find((n) => n.id === sId);
     const eNode = nodes.find((n) => n.id === eId);
     if (sNode && eNode) {
-      if (!name) {
-        setName(`${sNode.name} to ${eNode.name}`);
-      }
       const dist = calculateDistanceKm(sNode.lat, sNode.lng, eNode.lat, eNode.lng);
       setDistanceKm(Math.round(dist * 1.3 * 10) / 10); // trail winding factor 1.3
-      const eleDiff = eNode.elevation - sNode.elevation;
+      const eleDiff = (eNode.elevation || 0) - (sNode.elevation || 0);
       if (eleDiff > 0) {
         setElevationGainM(Math.round(eleDiff));
         setElevationLossM(10);
@@ -92,7 +89,7 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
     ];
 
     onSaveSegment({
-      name: name.trim() || `${sNode.name} to ${eNode.name}`,
+      name: name.trim(),
       startNodeId: sNode.id,
       endNodeId: eNode.id,
       distanceKm: Number(distanceKm),
@@ -131,21 +128,21 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
       }}
       className="fixed inset-0 z-[9999] flex items-center justify-center p-3 bg-black/40"
     >
-      <div className="bg-[#FCFBF7] border border-[#D5D0C6] rounded-[6px] w-full max-w-lg p-5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] relative text-[#485057] select-none">
+      <div className="bg-[#FCFBF7] border border-[#D1CDBC] rounded-[6px] w-full max-w-lg p-5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] relative text-[#2B2B2B] select-none">
         <button
           onClick={onClose}
-          className="absolute top-3.5 right-3.5 text-[#7A7A7A] hover:text-[#213026] p-1 rounded-[4px] hover:bg-[#F5F3EE] transition-colors"
+          className="absolute top-3.5 right-3.5 text-[#555555] hover:text-[#1A1A1A] p-1 rounded-[4px] hover:bg-[#F5F3EE] transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-2.5 mb-4 border-b border-[#D5D0C6] pb-3">
+        <div className="flex items-center gap-2.5 mb-4 border-b border-[#D1CDBC] pb-3">
           <div className="w-7 h-7 rounded-[4px] bg-[#2D6A4F] text-white flex items-center justify-center shadow-xs">
             <Plus className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-sm font-bold font-sans text-[#213026]">Define Track Segment</h2>
-            <p className="text-[11px] font-mono text-[#485057]">
+            <h2 className="text-sm font-bold font-sans text-[#1A1A1A]">Define Segment</h2>
+            <p className="text-[11px] font-mono text-[#2B2B2B]">
               Establish a topological connection between two network waypoints.
             </p>
           </div>
@@ -154,38 +151,38 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
           <div className="grid grid-cols-2 gap-2 font-mono">
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-semibold font-sans">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-semibold font-sans">
                 Origin Waypoint
               </label>
               <select
                 required
                 value={startNodeId}
                 onChange={(e) => handleStartNodeChange(e.target.value)}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2.5 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2.5 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               >
                 <option value="">Select origin...</option>
                 {nodes.map((n) => (
                   <option key={n.id} value={n.id}>
-                    {n.name} ({n.type})
+                    {getNodeDisplayName(n)} ({n.type})
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-semibold font-sans">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-semibold font-sans">
                 Destination Waypoint
               </label>
               <select
                 required
                 value={endNodeId}
                 onChange={(e) => handleEndNodeChange(e.target.value)}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2.5 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2.5 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               >
                 <option value="">Select destination...</option>
                 {nodes.map((n) => (
                   <option key={n.id} value={n.id}>
-                    {n.name} ({n.type})
+                    {getNodeDisplayName(n)} ({n.type})
                   </option>
                 ))}
               </select>
@@ -193,22 +190,21 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
           </div>
 
           <div>
-            <label className="text-[#213026] block mb-1 text-[11px] font-semibold font-sans">
-              Track Segment Title
+            <label className="text-[#1A1A1A] block mb-1 text-[11px] font-semibold font-sans">
+              Segment Title (Optional)
             </label>
             <input
               type="text"
-              required
-              placeholder="e.g. Holly Hut to Pouakai Hut"
+              placeholder="Leave blank for auto-naming (A ➔ B)"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2.5 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F] font-sans"
+              className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2.5 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F] font-sans"
             />
           </div>
 
           <div className="grid grid-cols-3 gap-2 font-mono">
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-medium">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-medium">
                 Distance (km)
               </label>
               <input
@@ -217,11 +213,11 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
                 required
                 value={distanceKm}
                 onChange={(e) => setDistanceKm(Number(e.target.value))}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               />
             </div>
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-medium">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-medium">
                 Ascent (+m)
               </label>
               <input
@@ -229,11 +225,11 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
                 required
                 value={elevationGainM}
                 onChange={(e) => setElevationGainM(Number(e.target.value))}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               />
             </div>
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-medium">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-medium">
                 Descent (-m)
               </label>
               <input
@@ -241,20 +237,20 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
                 required
                 value={elevationLossM}
                 onChange={(e) => setElevationLossM(Number(e.target.value))}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 font-mono">
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-medium">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-medium">
                 DOC Classification
               </label>
               <select
                 value={difficulty}
                 onChange={(e) => setDifficulty(e.target.value as any)}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               >
                 <option value="easy">Easy (Well-graded track)</option>
                 <option value="moderate">Moderate (Tramping track / steps)</option>
@@ -264,13 +260,13 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
             </div>
 
             <div>
-              <label className="text-[#213026] block mb-1 text-[11px] font-medium">
+              <label className="text-[#1A1A1A] block mb-1 text-[11px] font-medium">
                 Surface Category
               </label>
               <select
                 value={surface}
                 onChange={(e) => setSurface(e.target.value as any)}
-                className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] px-2 py-1.5 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F]"
+                className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F]"
               >
                 <option value="track">Forest Track</option>
                 <option value="boardwalk">Boardwalk / Steps</option>
@@ -282,7 +278,7 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
           </div>
 
           <div>
-            <label className="text-[#213026] block mb-1 text-[11px] font-semibold font-sans">
+            <label className="text-[#1A1A1A] block mb-1 text-[11px] font-semibold font-sans">
               Terrain Description & Notes
             </label>
             <textarea
@@ -290,27 +286,27 @@ export const AddSegmentModal: React.FC<AddSegmentModalProps> = ({
               placeholder="Seasonal water points, river fords, exposure..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-[#FCFBF7] border border-[#D5D0C6] rounded-[4px] p-2 text-xs text-[#213026] focus:outline-none focus:border-[#2D6A4F] font-sans"
+              className="w-full bg-[#FCFBF7] border border-[#D1CDBC] rounded-[4px] p-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#2D6A4F] font-sans"
             />
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer font-sans text-xs text-[#485057]">
+          <label className="flex items-center gap-2 cursor-pointer font-sans text-xs text-[#2B2B2B]">
             <input
               type="checkbox"
               checked={markCompleted}
               onChange={(e) => setMarkCompleted(e.target.checked)}
-              className="rounded-[3px] bg-[#FCFBF7] border-[#D5D0C6] text-[#2D6A4F] focus:ring-0 w-3.5 h-3.5"
+              className="rounded-[3px] bg-[#FCFBF7] border-[#D1CDBC] text-[#2D6A4F] focus:ring-0 w-3.5 h-3.5"
             />
             <span>
               Mark as surveyed / completed immediately
             </span>
           </label>
 
-          <div className="flex justify-end gap-1.5 pt-3 border-t border-[#D5D0C6] font-mono">
+          <div className="flex justify-end gap-1.5 pt-3 border-t border-[#D1CDBC] font-mono">
             <button
               type="button"
               onClick={onClose}
-              className="px-2.5 py-1 bg-[#F5F3EE] hover:bg-[#E8E5DD] text-[#213026] border border-[#D5D0C6] rounded-[4px] text-xs font-medium"
+              className="px-2.5 py-1 bg-[#F5F3EE] hover:bg-[#C5C1B1] text-[#1A1A1A] border border-[#D1CDBC] rounded-[4px] text-xs font-medium"
             >
               Cancel
             </button>
