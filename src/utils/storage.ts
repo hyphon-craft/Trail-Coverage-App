@@ -36,6 +36,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   supabaseKey: '',
   elevationUnit: 'm',
   distanceUnit: 'km',
+  showNodes: true,
+  segmentFilter: 'all',
 };
 
 export function loadStoredRegions(): Region[] {

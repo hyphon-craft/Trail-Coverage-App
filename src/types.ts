@@ -107,4 +107,6 @@ export interface AppSettings {
   supabaseKey: string;
   elevationUnit: 'm' | 'ft';
   distanceUnit: 'km' | 'mi';
+  showNodes: boolean;
+  segmentFilter: 'all' | 'completed' | 'uncompleted';
 }

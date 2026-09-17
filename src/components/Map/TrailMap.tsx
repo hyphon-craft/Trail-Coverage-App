@@ -276,7 +276,14 @@ export const TrailMap: React.FC<TrailMapProps> = ({
     const layerGroup = segmentsLayerRef.current;
     layerGroup.clearLayers();
 
-    const regionSegments = segments.filter((s) => s.regionId === activeRegion.id);
+    let regionSegments = segments.filter((s) => s.regionId === activeRegion.id);
+
+    // Apply completion filter
+    if (settings.segmentFilter === 'completed') {
+      regionSegments = regionSegments.filter(s => completedSegmentIds.includes(s.id));
+    } else if (settings.segmentFilter === 'uncompleted') {
+      regionSegments = regionSegments.filter(s => !completedSegmentIds.includes(s.id));
+    }
 
     regionSegments.forEach((seg) => {
       if (!seg.coordinates || seg.coordinates.length < 2) return;
@@ -381,7 +388,7 @@ export const TrailMap: React.FC<TrailMapProps> = ({
       layerGroup.addLayer(baseTrack);
       layerGroup.addLayer(core);
     });
-  }, [segments, selectedSegmentId, settings.fogOfWarEnabled, activeRegion.id]);
+  }, [segments, selectedSegmentId, settings.fogOfWarEnabled, activeRegion.id, completedSegmentIds, settings.segmentFilter]);
 
   // Render Active Route Builder Preview Polyline (Planned Route: #1971C2)
   useEffect(() => {
@@ -493,6 +500,8 @@ export const TrailMap: React.FC<TrailMapProps> = ({
     if (!markersLayerRef.current) return;
     const layerGroup = markersLayerRef.current;
     layerGroup.clearLayers();
+
+    if (!settings.showNodes) return;
 
     const regionNodes = nodes.filter((n) => n.regionId === activeRegion.id);
 

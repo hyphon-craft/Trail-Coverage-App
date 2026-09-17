@@ -573,6 +573,7 @@ export default function App() {
             isPlanningStarted={isPlanningStarted}
             onStartPlanning={() => setIsPlanningStarted(true)}
             settings={settings}
+            onUpdateSettings={updateSettings}
             onOpenGpxUpload={() => setIsGpxModalOpen(true)}
           />
         </div>

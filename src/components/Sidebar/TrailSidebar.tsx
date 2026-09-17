@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { exportToGpx, getNodeDisplayName, getSegmentDisplayName } from '../../utils/geo';
 
-export type SidebarSection = 'coverage' | 'junctions' | 'landmarks' | 'planner' | 'routes' | null;
+export type SidebarSection = 'coverage' | 'visibility' | 'junctions' | 'landmarks' | 'planner' | 'routes' | null;
 
 interface TrailSidebarProps {
   activeTab: SidebarSection;
@@ -49,6 +49,7 @@ interface TrailSidebarProps {
   isPlanningStarted?: boolean;
   onStartPlanning?: () => void;
   settings: AppSettings;
+  onUpdateSettings: (settings: Partial<AppSettings>) => void;
   onOpenGpxUpload?: () => void;
 }
 
@@ -63,6 +64,7 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
   onSelectSegment,
   onOpenSegmentDetail,
   onOpenNodeEdit,
+  onOpenNodeEdit: _onOpenNodeEdit, // unused
   onOpenAddNode,
   isAddingNodeMode,
   onCancelAddNode,
@@ -80,6 +82,8 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
   plannerLastNodeId,
   isPlanningStarted,
   onStartPlanning,
+  settings,
+  onUpdateSettings,
   onOpenGpxUpload,
 }) => {
   const regionNodes = nodes.filter((n) => n.regionId === activeRegionId);
@@ -215,7 +219,55 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
         )}
       </div>
 
-      {/* 2. TRACK JUNCTIONS SECTION */}
+      {/* 2. VISIBILITY & FILTERS SECTION */}
+      <div className="border-b border-[#C5C1B1]">
+        <button
+          onClick={() => toggleSection('visibility')}
+          className="w-full px-3.5 py-2.5 flex items-center justify-between hover:bg-[#F5F3EE] transition-colors"
+        >
+          <span className="font-semibold text-[#1A1A1A]">Visibility & Filters</span>
+          <ChevronRight className={`w-3.5 h-3.5 text-[#555555] transition-transform ${activeTab === 'visibility' ? 'rotate-90' : ''}`} />
+        </button>
+
+        {activeTab === 'visibility' && (
+          <div className="px-3.5 pb-3.5 pt-1 space-y-4">
+            {/* Toggles */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-[#555555]">Show All Nodes</span>
+                <button
+                  onClick={() => onUpdateSettings({ showNodes: !settings.showNodes })}
+                  className={`w-8 h-4 rounded-full transition-colors relative ${settings.showNodes ? 'bg-[#2D6A4F]' : 'bg-[#D1CDBC]'}`}
+                >
+                  <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${settings.showNodes ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Segment Filter (Segmented Control) */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-[#555555]">Track Completion Filter</span>
+              <div className="flex bg-[#F5F3EE] rounded-[4px] p-0.5 border border-[#D1CDBC]">
+                {(['all', 'completed', 'uncompleted'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => onUpdateSettings({ segmentFilter: filter })}
+                    className={`flex-1 py-1 text-[10px] font-mono rounded-[3px] transition-colors ${
+                      settings.segmentFilter === filter
+                        ? 'bg-white text-[#1A1A1A] shadow-xs border border-[#D1CDBC]'
+                        : 'text-[#555555] hover:text-[#1A1A1A]'
+                    }`}
+                  >
+                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. TRACK JUNCTIONS SECTION */}
       <div className="border-b border-[#C5C1B1]">
         <button
           onClick={() => toggleSection('junctions')}
