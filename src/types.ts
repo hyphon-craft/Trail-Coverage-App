@@ -108,5 +108,6 @@ export interface AppSettings {
   elevationUnit: 'm' | 'ft';
   distanceUnit: 'km' | 'mi';
   showNodes: boolean;
+  landmarkFilters: string[];
   segmentFilter: 'all' | 'completed' | 'uncompleted';
 }

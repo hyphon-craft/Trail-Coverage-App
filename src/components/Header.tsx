@@ -6,7 +6,8 @@ import {
   Database, 
   PanelLeftClose, 
   PanelLeftOpen,
-  Layers
+  Layers,
+  Download
 } from 'lucide-react';
 import { AppSettings, Region } from '../types';
 
@@ -18,6 +19,7 @@ interface HeaderProps {
   onSelectRegion: (id: string) => void;
   onOpenGpxUpload: () => void;
   onOpenSupabase: () => void;
+  onExportData: () => void;
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
 }
@@ -30,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectRegion,
   onOpenGpxUpload,
   onOpenSupabase,
+  onExportData,
   isSidebarOpen,
   onToggleSidebar,
 }) => {
@@ -103,7 +106,17 @@ export const Header: React.FC<HeaderProps> = ({
           title="Import GPX track"
         >
           <Upload className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Import GPX</span>
+          <span className="hidden lg:inline">Import GPX</span>
+        </button>
+
+        {/* Export Full Backup */}
+        <button
+          onClick={onExportData}
+          className="flex items-center gap-1 px-2 py-1 rounded-[4px] text-xs font-medium text-[#1A1A1A] hover:bg-[#F5F3EE] transition-colors"
+          title="Export all nodes, segments, and routes"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span className="hidden lg:inline">Export Backup</span>
         </button>
 
         {/* Settings / Supabase */}

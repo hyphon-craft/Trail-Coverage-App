@@ -64,7 +64,6 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
   onSelectSegment,
   onOpenSegmentDetail,
   onOpenNodeEdit,
-  onOpenNodeEdit: _onOpenNodeEdit, // unused
   onOpenAddNode,
   isAddingNodeMode,
   onCancelAddNode,
@@ -92,7 +91,6 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
   // Search & filter states
   const [nodeTypeFilter, setNodeTypeFilter] = useState<string>('all');
   const [nodeSearch, setNodeSearch] = useState('');
-  const [landmarkFilters, setLandmarkFilters] = useState<string[]>([]);
 
   // Route Builder inputs
   const [routeNameInput, setRouteNameInput] = useState('');
@@ -136,9 +134,9 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
   };
 
   const toggleLandmarkFilter = (type: string) => {
-    setLandmarkFilters(prev => 
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-    );
+    const prev = settings.landmarkFilters || [];
+    const updated = prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type];
+    onUpdateSettings({ landmarkFilters: updated });
   };
 
   const handleSaveCurrentRoute = (e: React.FormEvent) => {
@@ -370,7 +368,7 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
                   key={item.id}
                   onClick={() => toggleLandmarkFilter(item.id)}
                   className={`px-1.5 py-0.5 rounded-[3px] border text-[10px] font-mono transition-colors ${
-                    landmarkFilters.includes(item.id)
+                    (settings.landmarkFilters || []).includes(item.id)
                       ? 'bg-[#2D6A4F] text-white border-[#2D6A4F]'
                       : 'bg-[#FCFBF7] text-[#555555] border-[#D1CDBC] hover:border-[#2D6A4F]'
                   }`}
@@ -378,9 +376,9 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
                   {item.icon} {item.label}
                 </button>
               ))}
-              {landmarkFilters.length > 0 && (
+              {(settings.landmarkFilters || []).length > 0 && (
                 <button 
-                  onClick={() => setLandmarkFilters([])}
+                  onClick={() => onUpdateSettings({ landmarkFilters: [] })}
                   className="text-[10px] text-[#A44A3F] hover:underline ml-auto"
                 >
                   Clear
@@ -393,7 +391,7 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
               {regionNodes
                 .filter((n) => n.type !== 'junction')
                 .filter((n) => {
-                  if (landmarkFilters.length > 0 && !landmarkFilters.includes(n.type)) return false;
+                  if ((settings.landmarkFilters || []).length > 0 && !(settings.landmarkFilters || []).includes(n.type)) return false;
                   if (nodeSearch) {
                     const query = nodeSearch.toLowerCase();
                     const dName = (n.name || getNodeDisplayName(n)).toLowerCase();

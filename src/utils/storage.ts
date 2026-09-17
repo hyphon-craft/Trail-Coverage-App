@@ -37,6 +37,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   elevationUnit: 'm',
   distanceUnit: 'km',
   showNodes: true,
+  landmarkFilters: [],
   segmentFilter: 'all',
 };
 

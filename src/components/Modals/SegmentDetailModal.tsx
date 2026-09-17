@@ -18,6 +18,7 @@ interface SegmentDetailModalProps {
   onClose: () => void;
   segment: TrailSegment | null;
   nodes: TrailNode[];
+  isCompleted: boolean;
   onUpdateNotes: (segmentId: string, notes: string) => void;
   onDeleteSegment?: (segmentId: string) => void;
 }
@@ -27,6 +28,7 @@ export const SegmentDetailModal: React.FC<SegmentDetailModalProps> = ({
   onClose,
   segment,
   nodes,
+  isCompleted,
   onUpdateNotes,
   onDeleteSegment,
 }) => {
@@ -97,11 +99,16 @@ export const SegmentDetailModal: React.FC<SegmentDetailModalProps> = ({
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4 mb-3 border-b border-[#D1CDBC] pb-3">
-          <div>
-            <h2 className="text-base font-bold text-[#1A1A1A] font-sans">
-              {getSegmentDisplayName(segment, nodes)}
-            </h2>
-            <div className="text-xs text-[#555555] flex items-center gap-1.5 mt-0.5 font-sans">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <h2 className="text-base font-bold text-[#1A1A1A] font-sans truncate">
+                {getSegmentDisplayName(segment, nodes)}
+              </h2>
+              <div className={`shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-mono uppercase tracking-wider ${isCompleted ? 'bg-[#D2F4E1] text-[#2D6A4F] border border-[#74C69D]' : 'bg-[#E5E7EB] text-[#6B7280] border border-[#D1D5DB]'}`}>
+                {isCompleted ? 'Completed' : 'Unexplored'}
+              </div>
+            </div>
+            <div className="text-xs text-[#555555] flex items-center gap-1.5 font-sans">
               <span className="text-[#2B2B2B] font-medium">{startNode ? getSegmentDisplayName({ ...segment, name: '' }, [startNode]) : 'Node A'}</span>
               <ArrowRight className="w-3 h-3 text-[#555555]" />
               <span className="text-[#2B2B2B] font-medium">{endNode ? getSegmentDisplayName({ ...segment, name: '' }, [endNode]) : 'Node B'}</span>

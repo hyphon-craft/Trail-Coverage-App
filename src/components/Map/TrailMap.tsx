@@ -316,7 +316,7 @@ export const TrailMap: React.FC<TrailMapProps> = ({
       // Completion / Selection Overlay
       let overlayColor: string | null = null;
       if (isCompleted) {
-        overlayColor = isCompletedOnce ? '#74C69D' : '#2D6A4F';
+        overlayColor = isCompletedOnce ? '#00FF00' : '#10B981';
       }
       if (isSelected) {
         overlayColor = '#D97706'; // Selection takes priority for color
@@ -503,7 +503,13 @@ export const TrailMap: React.FC<TrailMapProps> = ({
 
     if (!settings.showNodes) return;
 
-    const regionNodes = nodes.filter((n) => n.regionId === activeRegion.id);
+    let regionNodes = nodes.filter((n) => n.regionId === activeRegion.id);
+
+    // Apply landmark type filters if active
+    const activeFilters = settings.landmarkFilters || [];
+    if (activeFilters.length > 0) {
+      regionNodes = regionNodes.filter(n => activeFilters.includes(n.type));
+    }
 
     regionNodes.forEach((node) => {
       let iconInnerHtml = '';
@@ -648,7 +654,7 @@ export const TrailMap: React.FC<TrailMapProps> = ({
 
       layerGroup.addLayer(marker);
     });
-  }, [nodes, activeRegion.id, selectedNodeId, settings.fogOfWarEnabled, onSelectNode, onOpenNodeEdit, onDeleteNode, activeTab, plannerLastNodeId, segments]);
+  }, [nodes, activeRegion.id, selectedNodeId, settings.fogOfWarEnabled, onSelectNode, onOpenNodeEdit, onDeleteNode, activeTab, plannerLastNodeId, segments, settings.landmarkFilters]);
 
   // Recenter map view
   const handleResetView = () => {

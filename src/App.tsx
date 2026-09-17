@@ -167,6 +167,27 @@ export default function App() {
     }
   };
 
+  const handleExportAllData = () => {
+    const exportData = {
+      nodes,
+      segments,
+      savedRoutes,
+      settings,
+      timestamp: new Date().toISOString(),
+      version: '1.0.0'
+    };
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trail_app_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // Save Node (Create or Edit)
   const handleSaveNode = (nodeToSave: TrailNode) => {
     let updated: TrailNode[];
@@ -499,6 +520,7 @@ export default function App() {
         onSelectRegion={setActiveRegionId}
         onOpenGpxUpload={() => setIsGpxModalOpen(true)}
         onOpenSupabase={() => setIsSupabaseModalOpen(true)}
+        onExportData={handleExportAllData}
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
       />
@@ -648,6 +670,7 @@ export default function App() {
         }}
         segment={detailSegment}
         nodes={nodes}
+        isCompleted={detailSegment ? completedSegmentIds.includes(detailSegment.id) : false}
         onUpdateNotes={handleUpdateNotes}
         onDeleteSegment={handleDeleteSegment}
       />
