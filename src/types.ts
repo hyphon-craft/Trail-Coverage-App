@@ -56,6 +56,7 @@ export interface SavedRoute {
   totalGainM: number;
   totalLossM: number;
   estimatedHours: number;
+  completionTime?: string; // e.g. "4h 20m"
   notes?: string;
   completed: boolean;
   completedAt?: string;

@@ -1,4 +1,5 @@
 import { Region, TrailNode, TrailSegment, SavedRoute } from '../types';
+import defaultData from './default_trail_data.json';
 
 export const INITIAL_REGIONS: Region[] = [
   {
@@ -10,7 +11,7 @@ export const INITIAL_REGIONS: Region[] = [
       [173.92, -39.38],
       [174.20, -39.20],
     ],
-    description: 'Stratovolcano in Taranaki, New Zealand. Upload your own GPS tracks and place field waypoints to map your personal network coverage.',
+    description: 'Stratovolcano in Taranaki, New Zealand. View the comprehensive network of mapped trails and your completed routes.',
   },
   {
     id: 'tongariro',
@@ -28,7 +29,7 @@ export const INITIAL_REGIONS: Region[] = [
   },
 ];
 
-// Completely empty initial registries for user to upload and build manually
-export const INITIAL_NODES: TrailNode[] = [];
-export const INITIAL_SEGMENTS: TrailSegment[] = [];
-export const INITIAL_SAVED_ROUTES: SavedRoute[] = [];
+// Load synced data as defaults
+export const INITIAL_NODES: TrailNode[] = (defaultData as any).nodes || [];
+export const INITIAL_SEGMENTS: TrailSegment[] = (defaultData as any).segments || [];
+export const INITIAL_SAVED_ROUTES: SavedRoute[] = (defaultData as any).savedRoutes || [];

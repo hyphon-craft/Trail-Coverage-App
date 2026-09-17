@@ -73,6 +73,52 @@ export default function App() {
   // GPX Track Preview State
   const [gpxPreviewTrack, setGpxPreviewTrack] = useState<GpxParsedTrack | null>(null);
 
+  // Handle shared route from URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedSegments = params.get('segments');
+    const sharedRouteName = params.get('route');
+
+    if (sharedSegments) {
+      const segmentIds = sharedSegments.split(',');
+      // Validate that all segments exist in our registry
+      const validSegmentIds = segmentIds.filter(id => segments.some(s => s.id === id));
+      
+      if (validSegmentIds.length > 0) {
+        // Create a temporary route object for the detail modal
+        const tempRoute: SavedRoute = {
+          id: 'shared-temp',
+          name: sharedRouteName || 'Shared Route',
+          segmentIds: validSegmentIds,
+          totalDistanceKm: validSegmentIds.reduce((sum, id) => {
+            const seg = segments.find(s => s.id === id);
+            return sum + (seg?.distanceKm || 0);
+          }, 0),
+          totalGainM: validSegmentIds.reduce((sum, id) => {
+            const seg = segments.find(s => s.id === id);
+            return sum + (seg?.elevationGainM || 0);
+          }, 0),
+          totalLossM: validSegmentIds.reduce((sum, id) => {
+            const seg = segments.find(s => s.id === id);
+            return sum + (seg?.elevationLossM || 0);
+          }, 0),
+          estimatedHours: 0,
+          completed: false,
+          regionId: activeRegionId,
+          createdAt: new Date().toISOString()
+        };
+
+        setDetailRoute(tempRoute);
+        setIsRouteDetailModalOpen(true);
+        setHighlightedRouteSegmentIds(validSegmentIds);
+        
+        // Clean up URL to avoid re-opening on refresh
+        const newUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+    }
+  }, [segments, activeRegionId]);
+
   // Migration: Ensure all nodes have a unique nodeNumber
   useEffect(() => {
     let changed = false;
@@ -139,6 +185,28 @@ export default function App() {
     }
   });
 
+  const filteredNodes = useMemo(() => {
+    if (settings.segmentFilter === 'all') return nodes;
+    
+    // Find all segments that match the filter
+    const visibleSegments = regionSegments.filter(s => {
+      const isCompleted = completedRouteSegmentIds.has(s.id);
+      if (settings.segmentFilter === 'completed') return isCompleted;
+      if (settings.segmentFilter === 'uncompleted') return !isCompleted;
+      return true;
+    });
+
+    // Extract node IDs from visible segments
+    const activeNodeIds = new Set<string>();
+    visibleSegments.forEach(s => {
+      activeNodeIds.add(s.startNodeId);
+      activeNodeIds.add(s.endNodeId);
+    });
+
+    // Return nodes that are either connected to visible segments OR not in the active region
+    return nodes.filter(n => n.regionId !== activeRegionId || activeNodeIds.has(n.id));
+  }, [nodes, regionSegments, completedRouteSegmentIds, settings.segmentFilter, activeRegionId]);
+
   const completedDistanceKm = regionSegments
     .filter(s => completedRouteSegmentIds.has(s.id))
     .reduce((acc, s) => acc + s.distanceKm, 0);
@@ -162,6 +230,20 @@ export default function App() {
     setSavedRoutes(updated);
     saveStoredRoutes(updated);
 
+    if (detailRoute && detailRoute.id === routeId) {
+      setDetailRoute(updated.find((r) => r.id === routeId) || null);
+    }
+  };
+
+  const handleUpdateRouteTime = (routeId: string, time: string) => {
+    const updated = savedRoutes.map((r) => {
+      if (r.id === routeId) {
+        return { ...r, completionTime: time };
+      }
+      return r;
+    });
+    setSavedRoutes(updated);
+    saveStoredRoutes(updated);
     if (detailRoute && detailRoute.id === routeId) {
       setDetailRoute(updated.find((r) => r.id === routeId) || null);
     }
@@ -591,6 +673,7 @@ export default function App() {
               setHighlightedRouteSegmentIds(route.segmentIds);
             }}
             onEditRoute={handleEditRoute}
+            onUpdateRouteTime={handleUpdateRouteTime}
             plannerLastNodeId={plannerLastNodeId}
             isPlanningStarted={isPlanningStarted}
             onStartPlanning={() => setIsPlanningStarted(true)}
@@ -605,7 +688,7 @@ export default function App() {
           <TrailMap
             settings={settings}
             activeRegion={activeRegion}
-            nodes={nodes}
+            nodes={filteredNodes}
             segments={segments}
             selectedSegmentId={selectedSegmentId}
             onSelectSegment={handleSelectSegmentFromMap}
@@ -670,7 +753,7 @@ export default function App() {
         }}
         segment={detailSegment}
         nodes={nodes}
-        isCompleted={detailSegment ? completedSegmentIds.includes(detailSegment.id) : false}
+        isCompleted={detailSegment ? completedRouteSegmentIds.has(detailSegment.id) : false}
         onUpdateNotes={handleUpdateNotes}
         onDeleteSegment={handleDeleteSegment}
       />
@@ -694,6 +777,7 @@ export default function App() {
         segments={segments}
         nodes={nodes}
         onToggleComplete={handleToggleRouteComplete}
+        onUpdateCompletionTime={handleUpdateRouteTime}
       />
 
       <SupabaseModal

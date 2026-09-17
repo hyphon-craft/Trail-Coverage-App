@@ -14,11 +14,13 @@ import {
   Eye,
   Plus,
   X,
-  Edit
+  Edit,
+  History,
+  Clock
 } from 'lucide-react';
 import { exportToGpx, getNodeDisplayName, getSegmentDisplayName } from '../../utils/geo';
 
-export type SidebarSection = 'coverage' | 'visibility' | 'junctions' | 'landmarks' | 'planner' | 'routes' | null;
+export type SidebarSection = 'coverage' | 'visibility' | 'junctions' | 'landmarks' | 'planner' | 'routes' | 'log' | null;
 
 interface TrailSidebarProps {
   activeTab: SidebarSection;
@@ -45,6 +47,7 @@ interface TrailSidebarProps {
   highlightedRouteSegmentIds: string[];
   onOpenRouteDetail: (route: SavedRoute) => void;
   onEditRoute: (route: SavedRoute) => void;
+  onUpdateRouteTime: (routeId: string, time: string) => void;
   plannerLastNodeId?: string | null;
   isPlanningStarted?: boolean;
   onStartPlanning?: () => void;
@@ -78,6 +81,7 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
   highlightedRouteSegmentIds,
   onOpenRouteDetail,
   onEditRoute,
+  onUpdateRouteTime,
   plannerLastNodeId,
   isPlanningStarted,
   onStartPlanning,
@@ -87,6 +91,7 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
 }) => {
   const regionNodes = nodes.filter((n) => n.regionId === activeRegionId);
   const regionRoutes = savedRoutes.filter((r) => r.regionId === activeRegionId);
+  const completedRoutes = regionRoutes.filter(r => r.completed);
 
   // Search & filter states
   const [nodeTypeFilter, setNodeTypeFilter] = useState<string>('all');
@@ -649,6 +654,77 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
               )}
             </div>
 
+          </div>
+        )}
+      </div>
+
+      {/* 7. ACTIVITY LOG SECTION */}
+      <div className="border-b border-[#C5C1B1]">
+        <button
+          onClick={() => toggleSection('log')}
+          className="w-full px-3.5 py-2.5 flex items-center justify-between hover:bg-[#F5F3EE] transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <History className="w-3.5 h-3.5 text-[#2D6A4F]" />
+            <span className="font-semibold text-[#1A1A1A]">Activity Log</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[11px] text-[#555555]">
+              {completedRoutes.length}
+            </span>
+            <ChevronRight className={`w-3.5 h-3.5 text-[#555555] transition-transform ${activeTab === 'log' ? 'rotate-90' : ''}`} />
+          </div>
+        </button>
+
+        {activeTab === 'log' && (
+          <div className="px-3 pb-3 pt-1 space-y-3">
+            {completedRoutes.length === 0 ? (
+              <div className="text-[11px] text-[#555555] py-4 text-center italic">
+                No routes completed yet. Mark a route as done to log your time.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {completedRoutes
+                  .sort((a, b) => new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime())
+                  .map((route) => (
+                    <div
+                      key={route.id}
+                      className="p-2.5 rounded-[6px] bg-white border border-[#D1CDBC] shadow-sm flex flex-col gap-2"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-[11px] text-[#1A1A1A] truncate">{route.name}</h4>
+                          <p className="text-[10px] text-[#555555] font-mono">
+                            {route.completedAt ? new Date(route.completedAt).toLocaleDateString() : 'Unknown date'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => onOpenRouteDetail(route)}
+                          className="text-[#2D6A4F] p-1 hover:bg-[#E8F0EB] rounded-full transition-colors"
+                        >
+                          <Eye className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1 text-[10px] text-[#555555]">
+                          <Clock className="w-3 h-3" />
+                          <input
+                            type="text"
+                            placeholder="Set time (e.g. 4h 20m)"
+                            value={route.completionTime || ''}
+                            onChange={(e) => onUpdateRouteTime(route.id, e.target.value)}
+                            className="bg-transparent border-b border-[#D1CDBC] focus:border-[#2D6A4F] outline-none px-1 w-24 text-[10px] font-mono text-[#1A1A1A]"
+                          />
+                        </div>
+                        <div className="text-[10px] font-mono text-[#555555]">
+                          {route.totalDistanceKm.toFixed(1)}km · +{route.totalGainM}m
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
       </div>

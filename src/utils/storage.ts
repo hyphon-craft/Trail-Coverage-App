@@ -2,26 +2,25 @@ import { AppSettings, Region, SavedRoute, TrailNode, TrailSegment } from '../typ
 import { INITIAL_NODES, INITIAL_REGIONS, INITIAL_SAVED_ROUTES, INITIAL_SEGMENTS } from '../data/taranakiData';
 
 const STORAGE_KEYS = {
-  REGIONS: 'taranaki_trail_regions_v2',
-  ACTIVE_REGION: 'taranaki_trail_active_region_v2',
-  NODES: 'taranaki_trail_nodes_v2',
-  SEGMENTS: 'taranaki_trail_segments_v2',
-  ROUTES: 'taranaki_trail_routes_v2',
-  SETTINGS: 'taranaki_trail_settings_v2',
+  REGIONS: 'taranaki_trail_regions_v3',
+  ACTIVE_REGION: 'taranaki_trail_active_region_v3',
+  NODES: 'taranaki_trail_nodes_v3',
+  SEGMENTS: 'taranaki_trail_segments_v3',
+  ROUTES: 'taranaki_trail_routes_v3',
+  SETTINGS: 'taranaki_trail_settings_v3',
 };
 
-// Ensure any previously seeded sample data is wiped for a clean slate
+// Ensure any previously seeded sample data is wiped for a clean slate with the new defaults
 if (typeof window !== 'undefined') {
   try {
-    const cleared = localStorage.getItem('taranaki_trail_wiped_seed_v2');
+    const cleared = localStorage.getItem('taranaki_trail_wiped_seed_v3');
     if (!cleared) {
-      localStorage.removeItem('taranaki_trail_nodes_v1');
-      localStorage.removeItem('taranaki_trail_segments_v1');
-      localStorage.removeItem('taranaki_trail_routes_v1');
-      localStorage.removeItem(STORAGE_KEYS.NODES);
-      localStorage.removeItem(STORAGE_KEYS.SEGMENTS);
-      localStorage.removeItem(STORAGE_KEYS.ROUTES);
-      localStorage.setItem('taranaki_trail_wiped_seed_v2', 'true');
+      // Clear all older versions to ensure the new comprehensive dataset is loaded
+      localStorage.removeItem('taranaki_trail_wiped_seed_v2');
+      localStorage.removeItem('taranaki_trail_nodes_v2');
+      localStorage.removeItem('taranaki_trail_segments_v2');
+      localStorage.removeItem('taranaki_trail_routes_v2');
+      localStorage.setItem('taranaki_trail_wiped_seed_v3', 'true');
     }
   } catch (e) {
     console.error('Storage wipe check error', e);

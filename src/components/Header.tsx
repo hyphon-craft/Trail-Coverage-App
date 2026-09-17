@@ -7,7 +7,8 @@ import {
   PanelLeftClose, 
   PanelLeftOpen,
   Layers,
-  Download
+  Download,
+  Send
 } from 'lucide-react';
 import { AppSettings, Region } from '../types';
 

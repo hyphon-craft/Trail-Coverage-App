@@ -12,7 +12,8 @@ import {
   ArrowUpRight, 
   ArrowDownRight,
   Route,
-  Check
+  Check,
+  Share2
 } from 'lucide-react';
 import { exportToGpx } from '../../utils/geo';
 
@@ -23,6 +24,7 @@ interface RouteDetailModalProps {
   segments: TrailSegment[];
   nodes: TrailNode[];
   onToggleComplete: (routeId: string) => void;
+  onUpdateCompletionTime?: (routeId: string, time: string) => void;
 }
 
 export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
@@ -31,9 +33,11 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
   route,
   segments,
   nodes,
-  onToggleComplete
+  onToggleComplete,
+  onUpdateCompletionTime
 }) => {
   const [expandedSegments, setExpandedSegments] = useState<Record<string, boolean>>({});
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
 
   if (!isOpen || !route) return null;
 
@@ -63,6 +67,18 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
     a.download = `${route.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}.gpx`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleShareLink = () => {
+    // Since nodes and segments are now hardcoded defaults, we can share just by IDs
+    const baseUrl = window.location.origin + window.location.pathname;
+    const segmentIds = route.segmentIds.join(',');
+    const shareUrl = `${baseUrl}?route=${encodeURIComponent(route.name)}&segments=${segmentIds}`;
+    
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopyStatus('copied');
+      setTimeout(() => setCopyStatus('idle'), 2000);
+    });
   };
 
   return (
@@ -118,6 +134,27 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
               <div className="text-lg font-mono font-bold text-[#A44A3F]">-{route.totalLossM}<span className="text-xs font-normal ml-0.5">m</span></div>
             </div>
           </div>
+
+          {route.completed && (
+            <div className="p-3 bg-[#E8F0EB] border border-[#74C69D] rounded-[6px]">
+              <div className="flex items-center gap-2 mb-2">
+                <Check className="w-4 h-4 text-[#2D6A4F]" />
+                <span className="text-sm font-bold text-[#2D6A4F]">Completed Route</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-bold text-[#555555] uppercase">Time to Complete</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. 5h 30m"
+                    value={route.completionTime || ''}
+                    onChange={(e) => onUpdateCompletionTime?.(route.id, e.target.value)}
+                    className="bg-white border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-sm w-full focus:outline-none focus:border-[#2D6A4F]"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Segment List */}
           <div className="space-y-2">
@@ -190,7 +227,19 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-[#C5C1B1] flex justify-end bg-[#F5F3EE] rounded-b-[8px]">
+        <div className="p-4 border-t border-[#C5C1B1] flex items-center justify-between bg-[#F5F3EE] rounded-b-[8px]">
+          <button
+            onClick={handleShareLink}
+            className={`flex items-center gap-2 px-4 py-2 rounded-[6px] text-xs font-bold transition-all shadow-sm active:scale-95 border ${
+              copyStatus === 'copied' 
+                ? 'bg-[#E8F0EB] text-[#2D6A4F] border-[#2D6A4F]' 
+                : 'bg-white text-[#1A1A1A] border-[#D1CDBC] hover:bg-white/80'
+            }`}
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            {copyStatus === 'copied' ? 'Link Copied!' : 'Share Link'}
+          </button>
+          
           <button
             onClick={handleDownloadGpx}
             className="flex items-center gap-2 px-4 py-2 bg-[#2D6A4F] hover:bg-[#23533E] text-white rounded-[6px] text-xs font-bold transition-all shadow-md active:scale-95"
