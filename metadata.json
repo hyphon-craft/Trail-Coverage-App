@@ -1,0 +1,6 @@
+{
+  "name": "Mt Taranaki Trail Coverage",
+  "description": "Hiking trail coverage and segment network tracker for Mt Taranaki and alpine New Zealand.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

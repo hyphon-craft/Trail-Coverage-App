@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-primary-bush: #2D6A4F;
+    --color-secondary-green: #40916C;
+    --color-completed-green: #52B788;
+    --color-active-route-blue: #1971C2;
+    --color-water-blue: #4C7EA8;
+    --color-summit-red: #A44A3F;
+    --color-hut-brown: #8B6F47;
+    --color-warning-orange: #C77D00;
+    --color-unexplored-grey: #6C757D;
+    --color-bg-primary: #F5F3EE;
+    --color-bg-panel: #FCFBF7;
+    --color-border: #D5D0C6;
+    --color-heading: #213026;
+    --color-body: #485057;
+    --color-disabled: #7A7A7A;
+  }
+
+  body {
+    font-family: 'IBM Plex Sans', Inter, 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #485057;
+    background-color: #F5F3EE;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, .font-heading {
+    font-family: 'IBM Plex Sans', Inter, 'Source Sans Pro', sans-serif;
+    color: #213026;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .font-mono, code, pre, .font-numeric {
+    font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Professional Topographic & GIS Leaflet popup & control styles */
+.leaflet-container {
+  background-color: #E8E5DD !important;
+  font-family: 'IBM Plex Sans', sans-serif !important;
+}
+
+.leaflet-container.cursor-crosshair,
+.leaflet-container.cursor-crosshair * {
+  cursor: crosshair !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #FCFBF7 !important;
+  color: #213026 !important;
+  border-radius: 6px !important;
+  border: 1px solid #D5D0C6 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.07) !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  line-height: 1.4 !important;
+}
+
+.leaflet-popup-tip {
+  background: #FCFBF7 !important;
+  border: 1px solid #D5D0C6 !important;
+  box-shadow: none !important;
+}
+
+.leaflet-popup-close-button {
+  color: #7A7A7A !important;
+  font-size: 14px !important;
+  padding: 4px 8px !important;
+}
+.leaflet-popup-close-button:hover {
+  color: #213026 !important;
+}
+
+.leaflet-control-zoom {
+  border: 1px solid #D5D0C6 !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.07) !important;
+}
+
+.leaflet-control-zoom a {
+  background-color: #FCFBF7 !important;
+  color: #213026 !important;
+  border-bottom: 1px solid #D5D0C6 !important;
+  transition: background 0.15s ease;
+}
+
+.leaflet-control-zoom a:hover {
+  background-color: #F5F3EE !important;
+  color: #2D6A4F !important;
+}
+
+.leaflet-control-scale-line {
+  background: rgba(252, 251, 247, 0.92) !important;
+  color: #213026 !important;
+  border-color: #213026 !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  padding: 2px 5px !important;
+  border-width: 1.5px !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(245, 243, 238, 0.85) !important;
+  color: #7A7A7A !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a {
+  color: #485057 !important;
+  text-decoration: none !important;
+}
+.leaflet-control-attribution a:hover {
+  text-decoration: underline !important;
+}
+
+/* Utilitarian field notebook scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F5F3EE;
+}
+::-webkit-scrollbar-thumb {
+  background: #D5D0C6;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B8B2A6;
+}
+
