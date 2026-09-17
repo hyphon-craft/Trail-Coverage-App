@@ -47,6 +47,15 @@ export interface CompletionRecord {
   notes?: string;
 }
 
+export interface RouteCompletion {
+  id: string;
+  date: string;
+  time: string;
+  distanceKm: number;
+  elevationGainM: number;
+  notes?: string;
+}
+
 export interface SavedRoute {
   id: string;
   name: string;
@@ -56,10 +65,13 @@ export interface SavedRoute {
   totalGainM: number;
   totalLossM: number;
   estimatedHours: number;
-  completionTime?: string; // e.g. "4h 20m"
+  completionTime?: string; // legacy
   notes?: string;
-  completed: boolean;
-  completedAt?: string;
+  completed: boolean; // legacy
+  completedAt?: string; // legacy
+  completions?: RouteCompletion[];
+  isReversed?: boolean;
+  isReturn?: boolean;
   createdAt: string;
   regionId: string;
 }

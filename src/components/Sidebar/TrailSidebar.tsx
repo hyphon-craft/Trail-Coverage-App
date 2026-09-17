@@ -16,9 +16,18 @@ import {
   X,
   Edit,
   History,
-  Clock
+  Clock,
+  RefreshCw,
+  Save,
+  Calendar
 } from 'lucide-react';
-import { exportToGpx, getNodeDisplayName, getSegmentDisplayName } from '../../utils/geo';
+import { 
+  exportToGpx, 
+  getNodeDisplayName, 
+  getSegmentDisplayName, 
+  calculateRouteStats,
+  getOrderedNodeIdsFromSegments
+} from '../../utils/geo';
 
 export type SidebarSection = 'coverage' | 'visibility' | 'junctions' | 'landmarks' | 'planner' | 'routes' | 'log' | null;
 
@@ -37,20 +46,24 @@ interface TrailSidebarProps {
   isAddingNodeMode?: boolean;
   onCancelAddNode?: () => void;
   onOpenAddSegment: () => void;
-  onToggleCompleteRoute: (routeId: string) => void;
+  onAddRouteCompletion: (routeId: string) => void;
+  onUpdateRouteCompletion: (routeId: string, completionId: string, date: string, time: string) => void;
+  onRemoveRouteCompletion: (routeId: string, completionId: string) => void;
   activeRouteSegmentIds: string[];
   onRemoveSegmentFromRoute: (index: number) => void;
   onClearRoute: () => void;
-  onSaveRoute: (name: string, description: string, notes: string) => void;
+  onSaveRoute: (name: string, description: string, notes: string, finalSegmentIds: string[]) => void;
+  onOpenSaveRoute: () => void;
   onDeleteSavedRoute: (routeId: string) => void;
   onHighlightRoute: (segmentIds: string[]) => void;
   highlightedRouteSegmentIds: string[];
   onOpenRouteDetail: (route: SavedRoute) => void;
   onEditRoute: (route: SavedRoute) => void;
-  onUpdateRouteTime: (routeId: string, time: string) => void;
   plannerLastNodeId?: string | null;
   isPlanningStarted?: boolean;
   onStartPlanning?: () => void;
+  plannerIsReversed?: boolean;
+  onTogglePlannerReverse?: () => void;
   settings: AppSettings;
   onUpdateSettings: (settings: Partial<AppSettings>) => void;
   onOpenGpxUpload?: () => void;
@@ -71,34 +84,37 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
   isAddingNodeMode,
   onCancelAddNode,
   onOpenAddSegment,
-  onToggleCompleteRoute,
+  onAddRouteCompletion,
+  onUpdateRouteCompletion,
+  onRemoveRouteCompletion,
   activeRouteSegmentIds,
   onRemoveSegmentFromRoute,
   onClearRoute,
   onSaveRoute,
+  onOpenSaveRoute,
   onDeleteSavedRoute,
   onHighlightRoute,
   highlightedRouteSegmentIds,
   onOpenRouteDetail,
   onEditRoute,
-  onUpdateRouteTime,
   plannerLastNodeId,
   isPlanningStarted,
   onStartPlanning,
+  plannerIsReversed,
+  onTogglePlannerReverse,
   settings,
   onUpdateSettings,
   onOpenGpxUpload,
 }) => {
   const regionNodes = nodes.filter((n) => n.regionId === activeRegionId);
   const regionRoutes = savedRoutes.filter((r) => r.regionId === activeRegionId);
-  const completedRoutes = regionRoutes.filter(r => r.completed);
-
+  
   // Search & filter states
   const [nodeTypeFilter, setNodeTypeFilter] = useState<string>('all');
   const [nodeSearch, setNodeSearch] = useState('');
-
-  // Route Builder inputs
-  const [routeNameInput, setRouteNameInput] = useState('');
+  const [showDebug, setShowDebug] = useState(false);
+  const [logSortBy, setLogSortBy] = useState<'date' | 'distance' | 'time' | 'elevation'>('date');
+  const [logSortOrder, setLogSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Coverage metric calculations
   const regionSegments = segments.filter((s) => s.regionId === activeRegionId);
@@ -120,14 +136,71 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
   const remainingDistance = Math.max(0, totalDistance - completedDistance);
   const completedSegmentsCount = regionSegments.filter(s => completedSegmentIds.has(s.id)).length;
 
+  // Helper to parse duration string to minutes for sorting
+  const parseDuration = (timeStr: string): number => {
+    if (!timeStr) return 0;
+    const hoursMatch = timeStr.match(/(\d+)\s*h/i);
+    const minutesMatch = timeStr.match(/(\d+)\s*m/i);
+    const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
+    const minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
+    return (hours * 60) + minutes;
+  };
+
+  const allCompletions = React.useMemo(() => {
+    const completions = regionRoutes.flatMap(route => {
+      const routeCompletions = route.completions || [];
+      if (routeCompletions.length === 0 && route.completed) {
+        // Legacy fallback
+        return [{
+          id: route.id + '-legacy',
+          date: (route.completedAt ? new Date(route.completedAt) : new Date()).toISOString().split('T')[0],
+          time: route.completionTime || '',
+          distanceKm: route.totalDistanceKm,
+          elevationGainM: route.totalGainM,
+          route
+        }];
+      }
+      return routeCompletions.map(completion => ({
+        ...completion,
+        route
+      }));
+    });
+
+    return completions.sort((a, b) => {
+      let comparison = 0;
+      switch (logSortBy) {
+        case 'date':
+          comparison = new Date(b.date).getTime() - new Date(a.date).getTime();
+          break;
+        case 'distance':
+          comparison = (b.distanceKm || b.route.totalDistanceKm) - (a.distanceKm || a.route.totalDistanceKm);
+          break;
+        case 'elevation':
+          comparison = (b.elevationGainM || b.route.totalGainM) - (a.elevationGainM || a.route.totalGainM);
+          break;
+        case 'time':
+          comparison = parseDuration(b.time) - parseDuration(a.time);
+          break;
+      }
+      return logSortOrder === 'desc' ? comparison : -comparison;
+    });
+  }, [regionRoutes, logSortBy, logSortOrder]);
+
   // Route builder totals
   const activeRouteSegments = activeRouteSegmentIds
     .map((id) => segments.find((s) => s.id === id))
     .filter((s): s is TrailSegment => !!s);
 
-  const routeTotalDist = activeRouteSegments.reduce((acc, s) => acc + s.distanceKm, 0);
-  const routeTotalGain = activeRouteSegments.reduce((acc, s) => acc + s.elevationGainM, 0);
-  const routeTotalLoss = activeRouteSegments.reduce((acc, s) => acc + s.elevationLossM, 0);
+  const routeStats = calculateRouteStats(activeRouteSegmentIds, segments, plannerIsReversed);
+  const routeTotalDist = routeStats.distanceKm;
+  const routeTotalGain = routeStats.elevationGainM;
+  const routeTotalLoss = routeStats.elevationLossM;
+
+  // Derive node sequence for display
+  const plannerNodeIds = getOrderedNodeIdsFromSegments(activeRouteSegmentIds, segments);
+  const plannerNodes = plannerNodeIds
+    .map(id => nodes.find(n => n.id === id))
+    .filter((n): n is TrailNode => !!n);
 
   // Toggle open accordion section
   const toggleSection = (section: SidebarSection) => {
@@ -142,14 +215,6 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
     const prev = settings.landmarkFilters || [];
     const updated = prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type];
     onUpdateSettings({ landmarkFilters: updated });
-  };
-
-  const handleSaveCurrentRoute = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!routeNameInput.trim()) return;
-    onSaveRoute(routeNameInput.trim(), '', '');
-    setRouteNameInput('');
-    onSelectTab('routes');
   };
 
   const handleExportRouteGpx = (route: SavedRoute) => {
@@ -490,63 +555,120 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
                     )}
 
                     {activeRouteSegments.length > 0 && (
-                      <div className="text-[11px] font-mono text-[#1A1A1A] flex items-center justify-between border-b border-[#C5C1B1] pb-1.5">
-                        <span className="font-semibold">{routeTotalDist.toFixed(1)} km</span>
-                        <span>+{routeTotalGain}m</span>
-                        {!isPlanningStarted && (
-                          <button onClick={onClearRoute} className="text-[#A44A3F] hover:underline text-[10px]">
-                            Clear
-                          </button>
+                      <div className="flex flex-col gap-2 border-b border-[#C5C1B1] pb-1.5">
+                        <div className="text-[11px] font-mono text-[#1A1A1A] flex items-center justify-between">
+                          <span className="font-semibold">{routeTotalDist.toFixed(1)} km</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-[#2D6A4F]">+{routeTotalGain}m</span>
+                            <span className="text-[#A44A3F]">-{routeTotalLoss}m</span>
+                          </span>
+                          {!isPlanningStarted && (
+                            <button onClick={onClearRoute} className="text-[#A44A3F] hover:underline text-[10px]">
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={onTogglePlannerReverse}
+                          className={`w-full py-1.5 rounded-[4px] text-[10px] font-bold font-mono uppercase transition-all border flex items-center justify-center gap-1.5 ${
+                            plannerIsReversed
+                              ? 'bg-[#D97706] text-white border-[#D97706]'
+                              : 'bg-white text-[#555555] border-[#D1CDBC] hover:bg-[#F5F3EE]'
+                          }`}
+                        >
+                          <RefreshCw className={`w-3 h-3 ${plannerIsReversed ? 'animate-spin-slow' : ''}`} />
+                          {plannerIsReversed ? 'Route Reversed' : 'Reverse Direction'}
+                        </button>
+
+                        {showDebug && (
+                          <div className="p-2 bg-[#F5F3EE] rounded border border-[#D1CDBC] font-mono text-[9px] text-[#555555] space-y-1 mt-1">
+                            <div className="flex justify-between border-b border-[#D1CDBC] pb-1 mb-1 font-bold text-[#1A1A1A]">
+                              <span>DEBUG DATA</span>
+                              <span>{plannerIsReversed ? 'REVERSED' : 'FORWARD'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Start Ele:</span>
+                              <span className="text-[#1A1A1A] font-bold">{routeStats.startElevation}m</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>End Ele:</span>
+                              <span className="text-[#1A1A1A] font-bold">{routeStats.endElevation}m</span>
+                            </div>
+                            <div className="flex justify-between border-t border-dotted border-[#D1CDBC] pt-1">
+                              <span>Net Change:</span>
+                              <span className={`font-bold ${routeStats.netChange >= 0 ? 'text-[#2D6A4F]' : 'text-[#A44A3F]'}`}>
+                                {routeStats.netChange > 0 ? '+' : ''}{routeStats.netChange}m
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Calc Ascent:</span>
+                              <span className="text-[#2D6A4F] font-bold">{routeStats.elevationGainM}m</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Calc Descent:</span>
+                              <span className="text-[#A44A3F] font-bold">{routeStats.elevationLossM}m</span>
+                            </div>
+                            <div className="pt-1 border-t border-[#D1CDBC] leading-tight">
+                              Dirs: {routeStats.isForwardArray.map((f, i) => `${i+1}:${f?'F':'B'}`).join(', ')}
+                            </div>
+                          </div>
                         )}
+                        <button 
+                          onClick={() => setShowDebug(!showDebug)}
+                          className="text-[9px] text-[#555555] hover:text-[#1A1A1A] hover:underline transition-colors text-right"
+                        >
+                          {showDebug ? 'Hide Debug' : 'Show Debug Metrics'}
+                        </button>
                       </div>
                     )}
 
-                    {/* Stages List */}
-                    <div className="space-y-1 max-h-36 overflow-y-auto">
-                      {activeRouteSegments.map((seg, idx) => (
-                        <div key={`${seg.id}-${idx}`} className="flex items-center justify-between text-[11px] py-0.5">
-                          <span className="truncate text-[#1A1A1A] pr-2">
-                            {idx + 1}. {getSegmentDisplayName(seg, nodes)}
-                          </span>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[10px] font-mono text-[#555555]">{seg.distanceKm.toFixed(1)}k</span>
-                            <button
-                              onClick={() => onRemoveSegmentFromRoute(idx)}
-                              className="text-[#555555] hover:text-[#A44A3F]"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
+                    {/* Dots Sequence List */}
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto mb-2">
+                      <div className="text-[10px] uppercase font-mono text-[#555555] mb-1 px-1 flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 bg-[#2D6A4F] rounded-full"></div>
+                        Dot Sequence
+                      </div>
+                      {plannerNodes.map((node, idx) => (
+                        <div key={`${node.id}-${idx}`} className="flex items-center justify-between text-[11px] py-1 px-2 bg-[#F5F3EE] rounded-[4px] border border-[#D1CDBC]/50">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-[10px] text-[#2D6A4F] font-bold bg-white w-4 h-4 flex items-center justify-center rounded-full border border-[#D1CDBC]">
+                              {idx + 1}
+                            </span>
+                            <span className="truncate text-[#1A1A1A] font-medium">
+                              {getNodeDisplayName(node)}
+                            </span>
                           </div>
+                          <span className="text-[9px] font-mono text-[#555555] uppercase tracking-tighter ml-2 bg-white px-1 rounded border border-[#D1CDBC]">
+                            {node.type || 'Dot'}
+                          </span>
                         </div>
                       ))}
+                      {plannerNodes.length === 0 && plannerLastNodeId && (
+                        <div className="flex items-center gap-2 py-1 px-2 bg-[#F5F3EE] rounded-[4px] border border-[#D1CDBC]/50">
+                           <span className="font-mono text-[10px] text-[#2D6A4F] font-bold bg-white w-4 h-4 flex items-center justify-center rounded-full border border-[#D1CDBC]">1</span>
+                           <span className="text-[#1A1A1A] font-medium italic">Start Point Selected</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Save Route input */}
-                    <form onSubmit={handleSaveCurrentRoute} className="flex flex-col gap-2 pt-1">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Name your route..."
-                        value={routeNameInput}
-                        onChange={(e) => setRouteNameInput(e.target.value)}
-                        className="w-full bg-transparent border-b border-[#C5C1B1] px-1 py-1 text-xs text-[#1A1A1A] placeholder-[#555555] focus:outline-none focus:border-[#2D6A4F]"
-                      />
-                      <div className="flex gap-1.5">
-                        <button
-                          type="submit"
-                          className="flex-1 py-1.5 bg-[#2D6A4F] hover:bg-[#23533E] text-white rounded-[4px] text-xs font-semibold transition-colors"
-                        >
-                          Save Route
-                        </button>
-                        <button
-                          type="button"
-                          onClick={onClearRoute}
-                          className="px-3 py-1.5 border border-[#C5C1B1] hover:bg-[#F5F3EE] rounded-[4px] text-xs font-medium transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
+                    {/* Action Buttons */}
+                    <div className="flex gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={onOpenSaveRoute}
+                        className="flex-1 py-1.5 bg-[#2D6A4F] hover:bg-[#23533E] text-white rounded-[4px] text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        Review & Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onClearRoute}
+                        className="px-3 py-1.5 border border-[#C5C1B1] hover:bg-[#F5F3EE] rounded-[4px] text-xs font-medium transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -592,20 +714,21 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              onToggleCompleteRoute(route.id);
+                              onAddRouteCompletion(route.id);
                             }}
-                            className={`w-3.5 h-3.5 rounded-[2px] flex items-center justify-center transition-colors border shrink-0 ${
-                              route.completed
-                                ? 'bg-[#2D6A4F] border-[#2D6A4F] text-white'
-                                : 'border-[#D1CDBC] hover:border-[#2D6A4F]'
-                            }`}
-                            title={route.completed ? 'Done' : 'Mark done'}
+                            className="px-1.5 py-0.5 rounded-[3px] flex items-center justify-center transition-colors border shrink-0 bg-[#E8F0EB] hover:bg-[#D1E2D9] border-[#2D6A4F]/20 text-[#2D6A4F] text-[10px] font-medium"
+                            title="Log completion"
                           >
-                            {route.completed && <Check className="w-2.5 h-2.5" />}
+                            <Plus className="w-3 h-3 mr-0.5" /> Log
                           </button>
-                          <span className={`font-medium text-[11px] truncate ${route.completed ? 'text-[#555555] line-through' : 'text-[#1A1A1A]'}`}>
+                          <span className={`font-medium text-[11px] truncate ${route.completed ? 'text-[#2D6A4F]' : 'text-[#1A1A1A]'}`}>
                             {route.name}
                           </span>
+                          {route.isReturn && (
+                            <span className="ml-1 text-[8px] font-bold bg-[#2D6A4F]/10 text-[#2D6A4F] px-1 rounded uppercase shrink-0">
+                              Return
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0 ml-1">
                           <button
@@ -670,7 +793,7 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <span className="font-mono text-[11px] text-[#555555]">
-              {completedRoutes.length}
+              {allCompletions.length}
             </span>
             <ChevronRight className={`w-3.5 h-3.5 text-[#555555] transition-transform ${activeTab === 'log' ? 'rotate-90' : ''}`} />
           </div>
@@ -678,51 +801,93 @@ export const TrailSidebar: React.FC<TrailSidebarProps> = ({
 
         {activeTab === 'log' && (
           <div className="px-3 pb-3 pt-1 space-y-3">
-            {completedRoutes.length === 0 ? (
+            {/* Sorting Controls */}
+            {allCompletions.length > 0 && (
+              <div className="flex items-center justify-between gap-2 bg-[#F5F3EE] p-2 rounded-[4px] border border-[#D1CDBC]">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  {(['date', 'distance', 'time', 'elevation'] as const).map((key) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        if (logSortBy === key) {
+                          setLogSortOrder(logSortOrder === 'asc' ? 'desc' : 'asc');
+                        } else {
+                          setLogSortBy(key);
+                          setLogSortOrder('desc');
+                        }
+                      }}
+                      className={`px-1.5 py-0.5 rounded-[3px] text-[9px] font-mono uppercase tracking-tighter transition-all border shrink-0 ${
+                        logSortBy === key
+                          ? 'bg-[#2D6A4F] text-white border-[#2D6A4F]'
+                          : 'bg-white text-[#555555] border-[#D1CDBC] hover:border-[#2D6A4F]'
+                      }`}
+                    >
+                      {key} {logSortBy === key && (logSortOrder === 'desc' ? '↓' : '↑')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {allCompletions.length === 0 ? (
               <div className="text-[11px] text-[#555555] py-4 text-center italic">
-                No routes completed yet. Mark a route as done to log your time.
+                No routes completed yet. Log a completion on a route to record it.
               </div>
             ) : (
               <div className="space-y-2">
-                {completedRoutes
-                  .sort((a, b) => new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime())
-                  .map((route) => (
+                {allCompletions.map((completion) => {
+                  const { route, id, date, time, distanceKm, elevationGainM, notes } = completion as any;
+                  return (
                     <div
-                      key={route.id}
+                      key={id}
                       className="p-2.5 rounded-[6px] bg-white border border-[#D1CDBC] shadow-sm flex flex-col gap-2"
                     >
                       <div className="flex items-start justify-between">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1 pr-2">
                           <h4 className="font-bold text-[11px] text-[#1A1A1A] truncate">{route.name}</h4>
-                          <p className="text-[10px] text-[#555555] font-mono">
-                            {route.completedAt ? new Date(route.completedAt).toLocaleDateString() : 'Unknown date'}
-                          </p>
+                          <div className="text-[10px] font-mono text-[#555555] mt-0.5 flex items-center gap-2">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </div>
                         </div>
-                        <button
-                          onClick={() => onOpenRouteDetail(route)}
-                          className="text-[#2D6A4F] p-1 hover:bg-[#E8F0EB] rounded-full transition-colors"
-                        >
-                          <Eye className="w-3 h-3" />
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => onOpenRouteDetail(route)}
+                            className="text-[#2D6A4F] p-1 hover:bg-[#E8F0EB] rounded-full transition-colors"
+                            title="View Route"
+                          >
+                            <Eye className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => onRemoveRouteCompletion(route.id, id)}
+                            className="text-[#A44A3F] p-1 hover:bg-[#FDF2F2] rounded-full transition-colors"
+                            title="Delete Log"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1 text-[10px] text-[#555555]">
-                          <Clock className="w-3 h-3" />
-                          <input
-                            type="text"
-                            placeholder="Set time (e.g. 4h 20m)"
-                            value={route.completionTime || ''}
-                            onChange={(e) => onUpdateRouteTime(route.id, e.target.value)}
-                            className="bg-transparent border-b border-[#D1CDBC] focus:border-[#2D6A4F] outline-none px-1 w-24 text-[10px] font-mono text-[#1A1A1A]"
-                          />
-                        </div>
+                        {time && (
+                          <div className="flex items-center gap-1 text-[10px] text-[#555555]">
+                            <Clock className="w-3 h-3" />
+                            <span className="font-mono">{time}</span>
+                          </div>
+                        )}
                         <div className="text-[10px] font-mono text-[#555555]">
-                          {route.totalDistanceKm.toFixed(1)}km · +{route.totalGainM}m
+                          {(distanceKm || route.totalDistanceKm).toFixed(1)}km · +{elevationGainM || route.totalGainM}m
                         </div>
                       </div>
+
+                      {notes && (
+                        <div className="text-[10px] text-[#555555] bg-[#F5F3EE] p-1.5 rounded-[4px] border border-[#D1CDBC]/50 font-sans italic">
+                          "{notes}"
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  );
+                })}
               </div>
             )}
           </div>

@@ -278,6 +278,11 @@ export const TrailMap: React.FC<TrailMapProps> = ({
 
     let regionSegments = segments.filter((s) => s.regionId === activeRegion.id);
 
+    // Apply route isolation: If a route is highlighted, only show those segments
+    if (highlightedRouteSegmentIds.length > 0) {
+      regionSegments = regionSegments.filter(s => highlightedRouteSegmentIds.includes(s.id));
+    }
+
     // Apply completion filter
     if (settings.segmentFilter === 'completed') {
       regionSegments = regionSegments.filter(s => completedSegmentIds.includes(s.id));
@@ -504,6 +509,18 @@ export const TrailMap: React.FC<TrailMapProps> = ({
     if (!settings.showNodes) return;
 
     let regionNodes = nodes.filter((n) => n.regionId === activeRegion.id);
+
+    // Apply route isolation: If a route is highlighted, only show nodes connected to it
+    if (highlightedRouteSegmentIds.length > 0) {
+      const activeSegmentIds = new Set(highlightedRouteSegmentIds);
+      const activeSegments = segments.filter(s => activeSegmentIds.has(s.id));
+      const activeNodeIds = new Set<string>();
+      activeSegments.forEach(s => {
+        activeNodeIds.add(s.startNodeId);
+        activeNodeIds.add(s.endNodeId);
+      });
+      regionNodes = regionNodes.filter(n => activeNodeIds.has(n.id));
+    }
 
     // Apply landmark type filters if active
     const activeFilters = settings.landmarkFilters || [];

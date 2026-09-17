@@ -23,6 +23,7 @@ import {
 } from './utils/storage';
 import { Header } from './components/Header';
 import { TrailMap } from './components/Map/TrailMap';
+import { calculateRouteStats, inferRouteSegmentDirections } from './utils/geo';
 import { TrailSidebar, SidebarSection } from './components/Sidebar/TrailSidebar';
 import { GpxUploadModal } from './components/Modals/GpxUploadModal';
 import { NodeEditModal } from './components/Modals/NodeEditModal';
@@ -30,6 +31,8 @@ import { SegmentDetailModal } from './components/Modals/SegmentDetailModal';
 import { AddSegmentModal } from './components/Modals/AddSegmentModal';
 import { RouteDetailModal } from './components/Modals/RouteDetailModal';
 import { SupabaseModal } from './components/Modals/SupabaseModal';
+import { SaveRouteModal } from './components/Modals/SaveRouteModal';
+import { LogCompletionModal } from './components/Modals/LogCompletionModal';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 export default function App() {
@@ -63,12 +66,16 @@ export default function App() {
   const [detailRoute, setDetailRoute] = useState<SavedRoute | null>(null);
 
   const [isAddSegmentModalOpen, setIsAddSegmentModalOpen] = useState(false);
+  const [isSaveRouteModalOpen, setIsSaveRouteModalOpen] = useState(false);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [loggingRoute, setLoggingRoute] = useState<SavedRoute | null>(null);
 
   // Route Builder State
   const [activeRouteSegmentIds, setActiveRouteSegmentIds] = useState<string[]>([]);
   const [plannerLastNodeId, setPlannerLastNodeId] = useState<string | null>(null);
   const [isPlanningStarted, setIsPlanningStarted] = useState(false);
+  const [plannerIsReversed, setPlannerIsReversed] = useState(false);
 
   // GPX Track Preview State
   const [gpxPreviewTrack, setGpxPreviewTrack] = useState<GpxParsedTrack | null>(null);
@@ -214,14 +221,30 @@ export default function App() {
   const completionPercentage = totalDistanceKm > 0 ? (completedDistanceKm / totalDistanceKm) * 100 : 0;
 
   // Toggle route completion
-  const handleToggleRouteComplete = (routeId: string) => {
+  const handleAddRouteCompletion = (routeId: string) => {
+    const route = savedRoutes.find(r => r.id === routeId);
+    if (route) {
+      setLoggingRoute(route);
+      setIsLogModalOpen(true);
+    }
+  };
+
+  const handleSaveLog = (routeId: string, date: string, time: string, distanceKm: number, elevationGainM: number, notes: string) => {
     const updated = savedRoutes.map((r) => {
       if (r.id === routeId) {
-        const nextCompleted = !r.completed;
+        const newCompletion = {
+          id: crypto.randomUUID(),
+          date,
+          time,
+          distanceKm,
+          elevationGainM,
+          notes
+        };
+        const completions = r.completions ? [...r.completions, newCompletion] : [newCompletion];
         return {
           ...r,
-          completed: nextCompleted,
-          completedAt: nextCompleted ? new Date().toISOString() : undefined,
+          completed: true, // legacy
+          completions
         };
       }
       return r;
@@ -235,10 +258,46 @@ export default function App() {
     }
   };
 
-  const handleUpdateRouteTime = (routeId: string, time: string) => {
+  const handleUpdateRouteCompletion = (routeId: string, completionId: string, date: string, time: string) => {
     const updated = savedRoutes.map((r) => {
       if (r.id === routeId) {
-        return { ...r, completionTime: time };
+        if (completionId === r.id + '-legacy') {
+          // Upgrade legacy completion to real completion
+          return {
+            ...r,
+            completedAt: undefined,
+            completionTime: undefined,
+            completions: [{ id: crypto.randomUUID(), date, time }]
+          };
+        } else if (r.completions) {
+          const completions = r.completions.map(c => 
+            c.id === completionId ? { ...c, date, time } : c
+          );
+          return { ...r, completions };
+        }
+      }
+      return r;
+    });
+    setSavedRoutes(updated);
+    saveStoredRoutes(updated);
+    if (detailRoute && detailRoute.id === routeId) {
+      setDetailRoute(updated.find((r) => r.id === routeId) || null);
+    }
+  };
+
+  const handleRemoveRouteCompletion = (routeId: string, completionId: string) => {
+    const updated = savedRoutes.map((r) => {
+      if (r.id === routeId) {
+        if (completionId === r.id + '-legacy') {
+          return { ...r, completed: false, completedAt: undefined, completionTime: undefined };
+        } else if (r.completions) {
+          const completions = r.completions.filter(c => c.id !== completionId);
+          return { 
+            ...r, 
+            completions,
+            completed: completions.length > 0 // update legacy flag
+          };
+        }
       }
       return r;
     });
@@ -395,17 +454,15 @@ export default function App() {
     setActiveRouteSegmentIds([]);
     setPlannerLastNodeId(null);
     setIsPlanningStarted(false);
+    setPlannerIsReversed(false);
     setEditingRouteId(null);
   };
 
-  const handleSaveRoute = (name: string, description: string, notes: string) => {
-    const routeSegments = activeRouteSegmentIds
-      .map((id) => segments.find((s) => s.id === id))
-      .filter(Boolean) as TrailSegment[];
-
-    const dist = routeSegments.reduce((acc, s) => acc + s.distanceKm, 0);
-    const gain = routeSegments.reduce((acc, s) => acc + s.elevationGainM, 0);
-    const loss = routeSegments.reduce((acc, s) => acc + s.elevationLossM, 0);
+  const handleSaveRoute = (name: string, description: string, notes: string, finalSegmentIds: string[], isReturn: boolean = false) => {
+    const routeStats = calculateRouteStats(finalSegmentIds, segments, false, isReturn);
+    const dist = routeStats.distanceKm;
+    const gain = routeStats.elevationGainM;
+    const loss = routeStats.elevationLossM;
     const hours = Math.round(((dist / 4.2) + (gain / 500)) * 10) / 10;
 
     if (editingRouteId) {
@@ -414,11 +471,15 @@ export default function App() {
           return {
             ...r,
             name,
-            segmentIds: [...activeRouteSegmentIds],
+            description,
+            segmentIds: [...finalSegmentIds],
             totalDistanceKm: Math.round(dist * 10) / 10,
             totalGainM: gain,
             totalLossM: loss,
             estimatedHours: hours,
+            notes,
+            isReversed: false,
+            isReturn
           };
         }
         return r;
@@ -431,7 +492,7 @@ export default function App() {
         id: `route-${Date.now()}`,
         name,
         description,
-        segmentIds: [...activeRouteSegmentIds],
+        segmentIds: [...finalSegmentIds],
         totalDistanceKm: Math.round(dist * 10) / 10,
         totalGainM: gain,
         totalLossM: loss,
@@ -440,6 +501,8 @@ export default function App() {
         completed: false,
         createdAt: new Date().toISOString(),
         regionId: activeRegionId,
+        isReversed: false,
+        isReturn
       };
 
       const updated = [newRoute, ...savedRoutes];
@@ -447,7 +510,7 @@ export default function App() {
       saveStoredRoutes(updated);
     }
     
-    setActiveRouteSegmentIds([]);
+    handleClearRoute();
   };
 
   const handleDeleteSavedRoute = (routeId: string) => {
@@ -481,6 +544,32 @@ export default function App() {
     if (!editingRouteId) {
       setPlannerLastNodeId(null);
       setIsPlanningStarted(false);
+    }
+  };
+
+  const handleTogglePlannerReverse = () => {
+    const nextReversed = !plannerIsReversed;
+    setPlannerIsReversed(nextReversed);
+    
+    // If we have segments, we need to update plannerLastNodeId to the new "end"
+    if (activeRouteSegmentIds.length > 0) {
+      const currentIds = [...activeRouteSegmentIds];
+      // Note: we reverse the sequence of IDs because the route is being flipped
+      const flippedIds = [...currentIds].reverse();
+      
+      // Infer directions for the flipped sequence
+      const steps = inferRouteSegmentDirections(flippedIds, segments);
+      if (steps.length > 0) {
+        const lastStep = steps[steps.length - 1];
+        setPlannerLastNodeId(lastStep.isForward ? lastStep.segment.endNodeId : lastStep.segment.startNodeId);
+      }
+      
+      // Update the sequence of IDs to match the reversal immediately if requested?
+      // Actually, if we reverse, we should probably flip the activeRouteSegmentIds list too
+      // so that it behaves like a "real" reversal.
+      setActiveRouteSegmentIds(flippedIds);
+      // And reset plannerIsReversed because the sequence is now the primary sequence
+      setPlannerIsReversed(false);
     }
   };
 
@@ -658,11 +747,14 @@ export default function App() {
             isAddingNodeMode={isAddingNodeMode}
             onCancelAddNode={() => setIsAddingNodeMode(false)}
             onOpenAddSegment={() => setIsAddSegmentModalOpen(true)}
-            onToggleCompleteRoute={handleToggleRouteComplete}
+            onAddRouteCompletion={handleAddRouteCompletion}
+            onUpdateRouteCompletion={handleUpdateRouteCompletion}
+            onRemoveRouteCompletion={handleRemoveRouteCompletion}
             activeRouteSegmentIds={activeRouteSegmentIds}
             onRemoveSegmentFromRoute={handleRemoveSegmentFromRoute}
             onClearRoute={handleClearRoute}
             onSaveRoute={handleSaveRoute}
+            onOpenSaveRoute={() => setIsSaveRouteModalOpen(true)}
             onDeleteSavedRoute={handleDeleteSavedRoute}
             onHighlightRoute={handleHighlightRoute}
             highlightedRouteSegmentIds={highlightedRouteSegmentIds}
@@ -673,10 +765,11 @@ export default function App() {
               setHighlightedRouteSegmentIds(route.segmentIds);
             }}
             onEditRoute={handleEditRoute}
-            onUpdateRouteTime={handleUpdateRouteTime}
             plannerLastNodeId={plannerLastNodeId}
             isPlanningStarted={isPlanningStarted}
             onStartPlanning={() => setIsPlanningStarted(true)}
+            plannerIsReversed={plannerIsReversed}
+            onTogglePlannerReverse={handleTogglePlannerReverse}
             settings={settings}
             onUpdateSettings={updateSettings}
             onOpenGpxUpload={() => setIsGpxModalOpen(true)}
@@ -766,6 +859,15 @@ export default function App() {
         onSaveSegment={handleSaveSegment}
       />
 
+      <SaveRouteModal
+        isOpen={isSaveRouteModalOpen}
+        onClose={() => setIsSaveRouteModalOpen(false)}
+        segmentIds={plannerIsReversed ? [...activeRouteSegmentIds].reverse() : activeRouteSegmentIds}
+        segments={segments}
+        nodes={nodes}
+        onSave={handleSaveRoute}
+      />
+
       <RouteDetailModal
         isOpen={isRouteDetailModalOpen}
         onClose={() => {
@@ -776,8 +878,16 @@ export default function App() {
         route={detailRoute}
         segments={segments}
         nodes={nodes}
-        onToggleComplete={handleToggleRouteComplete}
-        onUpdateCompletionTime={handleUpdateRouteTime}
+      />
+
+      <LogCompletionModal
+        isOpen={isLogModalOpen}
+        onClose={() => {
+          setIsLogModalOpen(false);
+          setLoggingRoute(null);
+        }}
+        route={loggingRoute}
+        onSave={handleSaveLog}
       />
 
       <SupabaseModal

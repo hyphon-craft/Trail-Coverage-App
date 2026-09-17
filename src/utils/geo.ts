@@ -152,12 +152,252 @@ function medianFilter(data: number[], windowSize: number = 5): number[] {
   return result;
 }
 
+export interface RouteSegmentStep {
+  segment: TrailSegment;
+  isForward: boolean;
+}
+
 /**
- * Estimates hiking duration using Naismith's Rule with Langmuir additions:
- * - 4.2 km/h flat walking
- * - + 1 hr per 500m ascent
- * - + 10 mins per 300m steep descent
+ * Infers the direction of travel for each segment in a route chain.
  */
+export function inferRouteSegmentDirections(
+  routeSegmentIds: string[],
+  allSegments: TrailSegment[]
+): RouteSegmentStep[] {
+  const steps: RouteSegmentStep[] = [];
+  let currentEndNodeId: string | null = null;
+
+  for (let i = 0; i < routeSegmentIds.length; i++) {
+    const sId = routeSegmentIds[i];
+    const seg = allSegments.find(s => s.id === sId);
+    if (!seg) continue;
+
+    let isForward = true;
+
+    if (i === 0) {
+      if (routeSegmentIds.length > 1) {
+        const nextSeg = allSegments.find(s => s.id === routeSegmentIds[1]);
+        if (nextSeg) {
+          const sharedNode = [seg.startNodeId, seg.endNodeId].find(n => 
+            n === nextSeg.startNodeId || n === nextSeg.endNodeId
+          );
+          if (sharedNode === seg.startNodeId) {
+            isForward = false;
+            currentEndNodeId = seg.startNodeId;
+          } else if (sharedNode === seg.endNodeId) {
+            isForward = true;
+            currentEndNodeId = seg.endNodeId;
+          }
+        }
+      } else {
+        // Only 1 segment, default to forward
+        isForward = true;
+        currentEndNodeId = seg.endNodeId;
+      }
+    } else {
+      if (currentEndNodeId) {
+        if (seg.endNodeId === currentEndNodeId) {
+          isForward = false;
+          currentEndNodeId = seg.startNodeId;
+        } else {
+          isForward = true;
+          currentEndNodeId = seg.endNodeId;
+        }
+      }
+    }
+
+    steps.push({ segment: seg, isForward });
+  }
+
+  return steps;
+}
+
+/**
+ * Builds a single continuous coordinate array for a route, reversing segments as needed
+ * to ensure they are connected start-to-end in the specified order.
+ */
+export function getOrderedRouteCoordinates(
+  routeSegmentIds: string[],
+  allSegments: TrailSegment[],
+  forceReverseAll: boolean = false
+): [number, number, number?][] {
+  const segmentIds = forceReverseAll ? [...routeSegmentIds].reverse() : routeSegmentIds;
+  const steps = inferRouteSegmentDirections(segmentIds, allSegments);
+  
+  const allCoords: [number, number, number?][] = [];
+  
+  for (let i = 0; i < steps.length; i++) {
+    const { segment, isForward } = steps[i];
+    // Create a copy to avoid mutating original segment data
+    let coords = [...segment.coordinates.map(c => [...c] as [number, number, number?])];
+    
+    if (!isForward) {
+      coords.reverse();
+    }
+    
+    // Remove duplicate at join (if end of previous matches start of current)
+    if (allCoords.length > 0 && coords.length > 0) {
+      const last = allCoords[allCoords.length - 1];
+      const first = coords[0];
+      // Simple coordinate comparison
+      if (Math.abs(last[0] - first[0]) < 0.000001 && Math.abs(last[1] - first[1]) < 0.000001) {
+        coords = coords.slice(1);
+      }
+    }
+    
+    allCoords.push(...coords);
+  }
+  
+  return allCoords;
+}
+
+/**
+ * Calculates ascent and descent from an elevation profile.
+ * Ignores small changes below threshold to reduce noise.
+ */
+export function calculateElevationGainLoss(
+  elevations: number[],
+  threshold: number = 1
+): { ascent: number; descent: number } {
+  let ascent = 0;
+  let descent = 0;
+  
+  if (elevations.length < 2) return { ascent, descent };
+  
+  let anchorEle = elevations[0];
+  
+  for (let i = 1; i < elevations.length; i++) {
+    const current = elevations[i];
+    if (current === undefined || isNaN(current)) continue;
+    
+    const diff = current - anchorEle;
+    
+    if (Math.abs(diff) >= threshold) {
+      if (diff > 0) {
+        ascent += diff;
+      } else {
+        descent += Math.abs(diff);
+      }
+      anchorEle = current;
+    }
+  }
+  
+  return { 
+    ascent: Math.round(ascent), 
+    descent: Math.round(descent) 
+  };
+}
+
+/**
+ * Estimates hiking duration using Naismith's Rule with Langmuir additions.
+ * Now calculates stats from the actual coordinate profile.
+ */
+export function calculateRouteStats(
+  routeSegmentIds: string[],
+  allSegments: TrailSegment[],
+  forceReverse: boolean = false,
+  isReturn: boolean = false
+): { 
+  distanceKm: number; 
+  elevationGainM: number; 
+  elevationLossM: number;
+  startElevation: number;
+  endElevation: number;
+  netChange: number;
+  isForwardArray: boolean[];
+} {
+  const coords = getOrderedRouteCoordinates(routeSegmentIds, allSegments, forceReverse);
+  let distanceKm = calculateCoordinatesDistanceKm(coords);
+  
+  // Extract elevations, filtering out invalid values
+  const elevations = coords
+    .map(c => c[2])
+    .filter((e): e is number => e !== undefined && !isNaN(e));
+    
+  let { ascent, descent } = calculateElevationGainLoss(elevations, 1);
+  
+  if (isReturn) {
+    distanceKm = distanceKm * 2;
+    const totalAscent = ascent + descent;
+    const totalDescent = descent + ascent;
+    ascent = totalAscent;
+    descent = totalDescent;
+  }
+  
+  const startElevation = elevations.length > 0 ? elevations[0] : 0;
+  const endElevation = elevations.length > 0 ? elevations[elevations.length - 1] : 0;
+
+  // For debug info: determine if each segment was traversed forward or backward
+  const ids = forceReverse ? [...routeSegmentIds].reverse() : routeSegmentIds;
+  const steps = inferRouteSegmentDirections(ids, allSegments);
+  const isForwardArray = steps.map(s => s.isForward);
+
+  return { 
+    distanceKm: Math.round(distanceKm * 10) / 10, 
+    elevationGainM: ascent, 
+    elevationLossM: descent,
+    startElevation,
+    endElevation,
+    netChange: endElevation - startElevation,
+    isForwardArray
+  };
+}
+
+/**
+ * Extracts the ordered sequence of node IDs from a sequence of segments.
+ * Corrects for segment traversal direction.
+ */
+export function getOrderedNodeIdsFromSegments(
+  routeSegmentIds: string[],
+  allSegments: TrailSegment[]
+): string[] {
+  const steps = inferRouteSegmentDirections(routeSegmentIds, allSegments);
+  if (steps.length === 0) return [];
+
+  const nodeIds: string[] = [];
+  
+  for (let i = 0; i < steps.length; i++) {
+    const { segment, isForward } = steps[i];
+    const start = isForward ? segment.startNodeId : segment.endNodeId;
+    const end = isForward ? segment.endNodeId : segment.startNodeId;
+    
+    if (i === 0) {
+      nodeIds.push(start);
+    }
+    nodeIds.push(end);
+  }
+
+  return nodeIds;
+}
+
+/**
+ * Attempts to find a sequence of segments that connect the given ordered node IDs.
+ * Returns null if the nodes are not connected.
+ */
+export function getSegmentsFromNodeSequence(
+  nodeIds: string[],
+  allSegments: TrailSegment[]
+): string[] | null {
+  if (nodeIds.length < 2) return [];
+  
+  const segmentIds: string[] = [];
+  
+  for (let i = 0; i < nodeIds.length - 1; i++) {
+    const startId = nodeIds[i];
+    const endId = nodeIds[i + 1];
+    
+    const segment = allSegments.find(s => 
+      (s.startNodeId === startId && s.endNodeId === endId) ||
+      (s.startNodeId === endId && s.endNodeId === startId)
+    );
+    
+    if (!segment) return null; // Gap found
+    segmentIds.push(segment.id);
+  }
+  
+  return segmentIds;
+}
+
 export function estimateHikingDurationHours(
   distanceKm: number,
   gainM: number,

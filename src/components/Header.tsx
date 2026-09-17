@@ -110,16 +110,6 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="hidden lg:inline">Import GPX</span>
         </button>
 
-        {/* Export Full Backup */}
-        <button
-          onClick={onExportData}
-          className="flex items-center gap-1 px-2 py-1 rounded-[4px] text-xs font-medium text-[#1A1A1A] hover:bg-[#F5F3EE] transition-colors"
-          title="Export all nodes, segments, and routes"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span className="hidden lg:inline">Export Backup</span>
-        </button>
-
         {/* Settings / Supabase */}
         <button
           onClick={onOpenSupabase}

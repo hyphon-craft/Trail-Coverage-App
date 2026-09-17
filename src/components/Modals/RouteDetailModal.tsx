@@ -15,7 +15,7 @@ import {
   Check,
   Share2
 } from 'lucide-react';
-import { exportToGpx } from '../../utils/geo';
+import { exportToGpx, inferRouteSegmentDirections, calculateRouteStats, calculateElevationGainLoss } from '../../utils/geo';
 
 interface RouteDetailModalProps {
   isOpen: boolean;
@@ -23,8 +23,6 @@ interface RouteDetailModalProps {
   route: SavedRoute | null;
   segments: TrailSegment[];
   nodes: TrailNode[];
-  onToggleComplete: (routeId: string) => void;
-  onUpdateCompletionTime?: (routeId: string, time: string) => void;
 }
 
 export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
@@ -32,18 +30,16 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
   onClose,
   route,
   segments,
-  nodes,
-  onToggleComplete,
-  onUpdateCompletionTime
+  nodes
 }) => {
   const [expandedSegments, setExpandedSegments] = useState<Record<string, boolean>>({});
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
 
   if (!isOpen || !route) return null;
 
-  const routeSegments = route.segmentIds
-    .map(id => segments.find(s => s.id === id))
-    .filter(Boolean) as TrailSegment[];
+  // Use the corrected calculation function on the fly for total accuracy
+  const routeStats = calculateRouteStats(route.segmentIds, segments, route.isReversed, route.isReturn);
+  const routeSteps = inferRouteSegmentDirections(route.isReversed ? [...route.segmentIds].reverse() : route.segmentIds, segments);
 
   const toggleSegment = (id: string, index: number) => {
     const key = `${id}-${index}`;
@@ -55,8 +51,8 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
 
   const handleDownloadGpx = () => {
     const combinedCoords: [number, number, number?][] = [];
-    routeSegments.forEach(s => {
-      combinedCoords.push(...s.coordinates);
+    routeSteps.forEach(step => {
+      combinedCoords.push(...step.segment.coordinates);
     });
 
     const gpxData = exportToGpx(route.name, combinedCoords, route.description);
@@ -98,17 +94,6 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => onToggleComplete(route.id)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-[4px] text-[10px] font-bold font-mono uppercase transition-all border ${
-                route.completed 
-                  ? 'bg-[#2D6A4F] text-white border-[#2D6A4F]' 
-                  : 'bg-white text-[#555555] border-[#D1CDBC] hover:bg-[#F5F3EE]'
-              }`}
-            >
-              <Check className="w-3 h-3" />
-              {route.completed ? 'Done' : 'Mark Done'}
-            </button>
             <button 
               onClick={onClose}
               className="p-1 hover:bg-[#D1CDBC] rounded-[4px] transition-colors text-[#555555]"
@@ -123,50 +108,68 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-white border border-[#C5C1B1] rounded-[6px] p-2.5 shadow-sm">
               <div className="text-[10px] font-mono text-[#555555] uppercase mb-0.5">Distance</div>
-              <div className="text-lg font-mono font-bold text-[#1A1A1A]">{route.totalDistanceKm.toFixed(1)}<span className="text-xs font-normal ml-0.5">km</span></div>
+              <div className="text-lg font-mono font-bold text-[#1A1A1A]">{routeStats.distanceKm.toFixed(1)}<span className="text-xs font-normal ml-0.5">km</span></div>
             </div>
             <div className="bg-white border border-[#C5C1B1] rounded-[6px] p-2.5 shadow-sm">
               <div className="text-[10px] font-mono text-[#2D6A4F] uppercase mb-0.5">Ascent</div>
-              <div className="text-lg font-mono font-bold text-[#2D6A4F]">+{route.totalGainM}<span className="text-xs font-normal ml-0.5">m</span></div>
+              <div className="text-lg font-mono font-bold text-[#2D6A4F]">+{routeStats.elevationGainM}<span className="text-xs font-normal ml-0.5">m</span></div>
             </div>
             <div className="bg-white border border-[#C5C1B1] rounded-[6px] p-2.5 shadow-sm">
               <div className="text-[10px] font-mono text-[#A44A3F] uppercase mb-0.5">Descent</div>
-              <div className="text-lg font-mono font-bold text-[#A44A3F]">-{route.totalLossM}<span className="text-xs font-normal ml-0.5">m</span></div>
+              <div className="text-lg font-mono font-bold text-[#A44A3F]">-{routeStats.elevationLossM}<span className="text-xs font-normal ml-0.5">m</span></div>
             </div>
           </div>
 
-          {route.completed && (
-            <div className="p-3 bg-[#E8F0EB] border border-[#74C69D] rounded-[6px]">
-              <div className="flex items-center gap-2 mb-2">
-                <Check className="w-4 h-4 text-[#2D6A4F]" />
-                <span className="text-sm font-bold text-[#2D6A4F]">Completed Route</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-bold text-[#555555] uppercase">Time to Complete</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g. 5h 30m"
-                    value={route.completionTime || ''}
-                    onChange={(e) => onUpdateCompletionTime?.(route.id, e.target.value)}
-                    className="bg-white border border-[#D1CDBC] rounded-[4px] px-2 py-1.5 text-sm w-full focus:outline-none focus:border-[#2D6A4F]"
-                  />
+          {/* Debug Info */}
+          <div className="p-3 bg-[#F5F3EE] border border-[#D1CDBC] rounded-[6px] font-mono text-[10px] text-[#555555] space-y-1">
+              <div className="flex justify-between border-b border-[#D1CDBC] pb-1 mb-1 font-bold text-[#1A1A1A] uppercase text-[9px]">
+                <span>Technical Profile</span>
+                <div className="flex gap-2">
+                  {route.isReturn && <span className="text-[#2D6A4F]">Return Trip</span>}
+                  <span>{route.isReversed ? 'Reversed' : 'Standard'}</span>
                 </div>
               </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div className="flex justify-between">
+                <span>Start:</span>
+                <span className="text-[#1A1A1A]">{routeStats.startElevation}m</span>
+              </div>
+              <div className="flex justify-between">
+                <span>End:</span>
+                <span className="text-[#1A1A1A]">{routeStats.endElevation}m</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Net:</span>
+                <span className={`font-bold ${routeStats.netChange >= 0 ? 'text-[#2D6A4F]' : 'text-[#A44A3F]'}`}>
+                  {routeStats.netChange > 0 ? '+' : ''}{routeStats.netChange}m
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Gain/Loss:</span>
+                <span className="text-[#1A1A1A]">+{routeStats.elevationGainM} / -{routeStats.elevationLossM}</span>
+              </div>
             </div>
-          )}
+          </div>
 
           {/* Segment List */}
           <div className="space-y-2">
             <h3 className="text-[11px] font-bold text-[#1A1A1A] uppercase tracking-wider flex items-center gap-1.5">
               <MapIcon className="w-3.5 h-3.5 text-[#2D6A4F]" />
-              Route Stages ({routeSegments.length})
+              Route Stages ({routeSteps.length})
             </h3>
             
             <div className="space-y-1.5">
-              {routeSegments.map((seg, idx) => {
+              {routeSteps.map((step, idx) => {
+                const seg = step.segment;
                 const key = `${seg.id}-${idx}`;
                 const isExpanded = expandedSegments[key];
+
+                const segmentElevations = step.segment.coordinates
+                  .map(c => c[2])
+                  .filter((e): e is number => e !== undefined && !isNaN(e));
+                
+                if (!step.isForward) segmentElevations.reverse();
+                const { ascent: stageGain, descent: stageLoss } = calculateElevationGainLoss(segmentElevations, 1);
 
                 return (
                   <div 
@@ -181,7 +184,7 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
                         <span className="text-[10px] font-mono font-bold text-[#555555] bg-[#F5F3EE] w-5 h-5 flex items-center justify-center rounded-full shrink-0">
                           {idx + 1}
                         </span>
-                        <span className="text-[11px] font-bold text-[#1A1A1A] uppercase tracking-tight">Segment {idx + 1}</span>
+                        <span className="text-[11px] font-bold text-[#1A1A1A] uppercase tracking-tight">Stage {idx + 1}</span>
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="text-[10px] font-mono text-[#555555]">{seg.distanceKm.toFixed(1)}km</span>
@@ -198,7 +201,7 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
                             </div>
                             <div>
                               <div className="text-[9px] text-[#555555] uppercase font-mono">Ascent</div>
-                              <div className="text-xs font-mono font-bold text-[#2D6A4F]">+{seg.elevationGainM}m</div>
+                              <div className="text-xs font-mono font-bold text-[#2D6A4F]">+{stageGain}m</div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -207,16 +210,14 @@ export const RouteDetailModal: React.FC<RouteDetailModalProps> = ({
                             </div>
                             <div>
                               <div className="text-[9px] text-[#555555] uppercase font-mono">Descent</div>
-                              <div className="text-xs font-mono font-bold text-[#A44A3F]">-{seg.elevationLossM}m</div>
+                              <div className="text-xs font-mono font-bold text-[#A44A3F]">-{stageLoss}m</div>
                             </div>
                           </div>
                         </div>
-                        {seg.surface && (
-                          <div className="mt-3 pt-2 border-t border-[#F5F3EE] flex items-center justify-between">
-                            <span className="text-[10px] text-[#555555]">Surface: <span className="text-[#1A1A1A] font-medium capitalize">{seg.surface}</span></span>
-                            <span className="text-[10px] text-[#555555]">Difficulty: <span className="text-[#1A1A1A] font-medium capitalize">{seg.difficulty}</span></span>
-                          </div>
-                        )}
+                        <div className="mt-3 pt-2 border-t border-[#F5F3EE] flex items-center justify-between text-[9px] font-mono text-[#555555]">
+                          <span>Direction: {step.isForward ? 'Forward' : 'Backward'}</span>
+                          <span>Points: {seg.coordinates.length}</span>
+                        </div>
                       </div>
                     )}
                   </div>
